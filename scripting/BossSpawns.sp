@@ -1,28 +1,21 @@
-// TO DO
-// Health bar tracking for all spawned entities
-// Set up Red, Blue and Orange Skeleton spawning
-// Model Scale arguments
-
 #pragma semicolon 1
 
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
 #include <morecolors>
+#include <autoexecconfig>
 
-#define PLUGIN_VERSION "2.0.0"
-#define HEALTHBAR_CLASS "monster_resource"
-#define HEALTHBAR_PROPERTY "m_iBossHealthPercentageByte"
-#define HEALTHBAR_MAX 255
-#define MERASMUS "merasmus"
-#define HORSEMANN "headless_hatman"
-#define MONOCULUS "eyeball_boss"
-#define SKELETON "tf_zombie"
-#define SKELETON2 "tf_zombie_spawner"
+#define PLUGIN_NAME	"[TF2] Boss Spawns"
+#define PLUGIN_VERSION "1.0.0"
+
+#define PLUGIN_TAG "[BossSpawns]"
+#define PLUGIN_TAG_COLORED "{unusual}[BossSpawns]"
+
+new Handle:ConVars[4] = {INVALID_HANDLE, ...};
+new bool:cv_Enabled = true, cv_HitboxScale = true;
 
 new Float:g_pos[3];
-
-new Handle:g_hBounds = INVALID_HANDLE;
 
 new Float:g_fBoundMin;
 new Float:g_fBoundMax;
@@ -30,15 +23,20 @@ new Float:g_fBoundMax;
 new String:g_szBoundMin[16];
 new String:g_szBoundMax[16];
 
-new g_NumClients;
 new g_trackEntity = -1;
 new g_healthBar = -1;
 
+new bool:gSK_IsSpawning = false;
+new gSK_Spawner = -1;
+
+/***************************************************/
+//Plugin Starts
+
 public Plugin:myinfo =
 {
-	name = "Boss Spawns",
+	name = PLUGIN_NAME,
 	author = "abrandnewday, reworked by Keith Warren (Jack of Designs)",
-	description = "Spawn halloween bosses using commands, natives or ConVars",
+	description = "Spawn Halloween bosses using commands, natives or ConVars.",
 	version = PLUGIN_VERSION,
 	url = "http://www.jackofdesigns.com/"
 }
@@ -64,22 +62,33 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 
 public OnPluginStart()
 {
+	PrintToConsole(0, "%s Boss Spawns is initializing...", PLUGIN_TAG);
+	
 	LoadTranslations("common.phrases");
-	CreateConVar("sm_bsd_version", PLUGIN_VERSION, "Plugin Version", FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	
-	g_hBounds = CreateConVar("sm_bsd_bounds", "0.1, 5.0", "Lower (optional) and upper bounds for resizing, separated with a comma.", 0);
-	HookConVarChange(g_hBounds, ConVarBoundsChanged);
-	ParseConVarToLimits(g_hBounds, g_szBoundMin, sizeof(g_szBoundMin), g_fBoundMin, g_szBoundMax, sizeof(g_szBoundMax), g_fBoundMax);
+	AutoExecConfig_SetFile("BossSpawns");
+		
+	ConVars[0] = AutoExecConfig_CreateConVar("sm_bossspawns_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
+	ConVars[1] = AutoExecConfig_CreateConVar("sm_bossspawns_status", "1", "Status of the plugin: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	ConVars[2] = AutoExecConfig_CreateConVar("sm_bossspawns_hitboxes", "1", "Enable hitbox scaling on spawned bosses: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	ConVars[3] = AutoExecConfig_CreateConVar("sm_bossspawns_bounds", "0.1, 5.0", "Lower (optional) and upper bounds for resizing, separated with a comma.", FCVAR_PLUGIN);
 	
-	RegAdminCmd("sm_hatman", Command_SpawnHatman, ADMFLAG_GENERIC, "Spawns the Horsemann - Usage: sm_hatman");
-	RegAdminCmd("sm_eyeboss", Command_SpawnEyeBoss, ADMFLAG_GENERIC, "Spawns the MONOCULUS! - Usage: sm_eyeboss");
-	RegAdminCmd("sm_eyeboss_red", Command_SpawnEyeBossRED, ADMFLAG_GENERIC, "Spawns the RED Spectral MONOCULUS! - Usage: sm_eyeboss_red");
-	RegAdminCmd("sm_eyeboss_blue", Command_SpawnEyeBossBLU, ADMFLAG_GENERIC, "Spawns the BLU Spectral MONOCULUS! - Usage: sm_eyeboss_blue");
-	RegAdminCmd("sm_merasmus", Command_SpawnMerasmus, ADMFLAG_GENERIC, "Spawns Merasmus - Usage: sm_merasmus");
-	RegAdminCmd("sm_skelegreen", Command_SpawnGreenSkeleton, ADMFLAG_GENERIC, "Spawns a Green Skeleton - Usage: sm_skelegreen");
-	RegAdminCmd("sm_skelered", Command_SpawnREDSkeleton, ADMFLAG_GENERIC, "Spawns a RED Skeleton - Usage: sm_skelered");
-	RegAdminCmd("sm_skeleblue", Command_SpawnBLUSkeleton, ADMFLAG_GENERIC, "Spawns a BLU Skeleton - Usage: sm_skeleblue");
-	RegAdminCmd("sm_skeleking", Command_SpawnSkeletonKing, ADMFLAG_GENERIC, "Spawns a Skeleton King - Usage: sm_skeleking");
+	AutoExecConfig_ExecuteFile();
+	
+	for (new i = 0; i < sizeof(ConVars); i++)
+	{
+		HookConVarChange(ConVars[i], HandleCvars);
+	}
+	
+	RegAdminCmd("sm_hatman", Command_SpawnHatman, ADMFLAG_GENERIC, "Spawns the Horsemann - Usage: sm_hatman <scale> <glow 0/1>");
+	RegAdminCmd("sm_eyeboss", Command_SpawnEyeBoss, ADMFLAG_GENERIC, "Spawns the MONOCULUS! - Usage: sm_eyeboss <scale> <glow 0/1>");
+	RegAdminCmd("sm_eyeboss_red", Command_SpawnEyeBossRED, ADMFLAG_GENERIC, "Spawns the RED Spectral MONOCULUS! - Usage: sm_eyeboss_red <scale> <glow 0/1>");
+	RegAdminCmd("sm_eyeboss_blue", Command_SpawnEyeBossBLU, ADMFLAG_GENERIC, "Spawns the BLU Spectral MONOCULUS! - Usage: sm_eyeboss_blue <scale> <glow 0/1>");
+	RegAdminCmd("sm_merasmus", Command_SpawnMerasmus, ADMFLAG_GENERIC, "Spawns Merasmus - Usage: sm_merasmus <scale> <glow 0/1>");
+	RegAdminCmd("sm_skelegreen", Command_SpawnGreenSkeleton, ADMFLAG_GENERIC, "Spawns a Green Skeleton - Usage: sm_skelegreen <scale> <glow 0/1>");
+	RegAdminCmd("sm_skelered", Command_SpawnREDSkeleton, ADMFLAG_GENERIC, "Spawns a RED Skeleton - Usage: sm_skelered <scale> <glow 0/1>");
+	RegAdminCmd("sm_skeleblue", Command_SpawnBLUSkeleton, ADMFLAG_GENERIC, "Spawns a BLU Skeleton - Usage: sm_skeleblue <scale> <glow 0/1>");
+	RegAdminCmd("sm_skeleking", Command_SpawnSkeletonKing, ADMFLAG_GENERIC, "Spawns a Skeleton King - Usage: sm_skeleking <scale> <glow 0/1>");
 	
 	RegAdminCmd("sm_slayhatman", Command_SlayHatman, ADMFLAG_GENERIC, "Slays all Horsemenn on the map - Usage: sm_slayhatman");
 	RegAdminCmd("sm_slayeyeboss", Command_SlayEyeBoss, ADMFLAG_GENERIC, "Slays all MONOCULUS! on the map - Usage: sm_slayeyeboss");
@@ -90,66 +99,84 @@ public OnPluginStart()
 	RegAdminCmd("sm_slayskelered", Command_SlayREDSkeleton, ADMFLAG_GENERIC, "Slays all RED Skeletons on the map - Usage: sm_slayskelered");
 	RegAdminCmd("sm_slayskeleblue", Command_SlayBLUSkeleton, ADMFLAG_GENERIC, "Slays all BLU Skeletons on the map - Usage: sm_slayskeleblue");
 	RegAdminCmd("sm_slayskeleking", Command_SlaySkeletonKing, ADMFLAG_GENERIC, "Slays all Skeleton Kings on the map - Usage: sm_slayskeleking");
+	
+	AutoExecConfig_CleanFile();
+}
+
+public OnConfigsExecuted()
+{
+	cv_Enabled = GetConVarBool(ConVars[1]);
+	cv_HitboxScale = GetConVarBool(ConVars[2]);
+	ParseConVarToLimits(ConVars[3], g_szBoundMin, sizeof(g_szBoundMin), g_fBoundMin, g_szBoundMax, sizeof(g_szBoundMax), g_fBoundMax);
+	
+	if (cv_Enabled)
+	{
+		PrintToConsole(0, "%s Boss Spawns has been fully initialized.", PLUGIN_TAG);
+		PrintToConsole(0, "%s Hitbox Scaling: %s", PLUGIN_TAG, cv_HitboxScale ? "ON" : "OFF");
+	}
+}
+
+public HandleCvars(Handle:cvar, const String:oldValue[], const String:newValue[])
+{
+	if (StrEqual(oldValue, newValue, true)) return;
+
+	new iNewValue = StringToInt(newValue);
+
+	if (cvar == ConVars[0])
+	{
+		SetConVarString(ConVars[0], PLUGIN_VERSION);
+	}
+	else if (cvar == ConVars[1])
+	{
+		cv_Enabled = bool:iNewValue;
+	}
+	else if (cvar == ConVars[2])
+	{
+		cv_HitboxScale = bool:iNewValue;
+	}
+	else if (cvar == ConVars[3])
+	{
+		ParseConVarToLimits(ConVars[3], g_szBoundMin, sizeof(g_szBoundMin), g_fBoundMin, g_szBoundMax, sizeof(g_szBoundMax), g_fBoundMax);
+	}
 }
 
 public OnPluginEnd()
 {
 	new entity = -1;
-	while((entity = FindEntityByClassname(entity, HORSEMANN)) != -1)
+	while((entity = FindEntityByClassname(entity, "headless_hatman")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (IsValidEntity(entity))
 		{
 			new Handle:g_Event = CreateEvent("pumpkin_lord_killed", true);
 			FireEvent(g_Event);
 			AcceptEntityInput(entity, "Kill");
 		}
 	}
-	while((entity = FindEntityByClassname(entity, MONOCULUS)) != -1)
+	while((entity = FindEntityByClassname(entity, "eyeball_boss")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (IsValidEntity(entity))
 		{
 			new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
 			FireEvent(g_Event);
 			AcceptEntityInput(entity, "Kill");
 		}
 	}
-	while((entity = FindEntityByClassname(entity, MERASMUS)) != -1)
+	while((entity = FindEntityByClassname(entity, "merasmus")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (IsValidEntity(entity))
 		{
 			new Handle:g_Event = CreateEvent("merasmus_killed", true);
 			FireEvent(g_Event);
 			AcceptEntityInput(entity, "Kill");
 		}
 	}
-	while((entity = FindEntityByClassname(entity, SKELETON)) != -1)
+	while((entity = FindEntityByClassname(entity, "tf_zombie")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (IsValidEntity(entity))
 		{
 			AcceptEntityInput(entity, "Kill");
 		}
 	}
-}
-
-public OnClientConnected(client)
-{
-	if(!IsFakeClient(client))
-	{
-		g_NumClients++;
-	}
-}
-
-public OnClientDisconnect(client)
-{
-	if(!IsFakeClient(client))
-	{
-		g_NumClients--;
-	}
-}
-
-public ConVarBoundsChanged(Handle:convar, const String:oldvalue[], const String:newvalue[])
-{
-	ParseConVarToLimits(g_hBounds, g_szBoundMin, sizeof(g_szBoundMin), g_fBoundMin, g_szBoundMax, sizeof(g_szBoundMax), g_fBoundMax);
 }
 
 ParseConVarToLimits(const Handle:hConvar, String:szMinString[], const iMinStringLength, &Float:fMin, String:szMaxString[], const iMaxStringLength, &Float:fMax)
@@ -185,655 +212,659 @@ ParseConVarToLimits(const Handle:hConvar, String:szMinString[], const iMinString
 	}
 }
 
+/***************************************************/
+//Spawn Commands
+
 public Action:Command_SpawnHatman(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
-
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
+		
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnHorseman(fScale))
+	if (SpawnBoss("headless_hatman", fScale, 0, 10.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {unusual}Horseless Headless Horsemann!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Horseless Headless Horsemann", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {unusual}Horseless Headless Horsemann!");
+		CReplyToCommand(client, "%s {default}You've spawned the {unusual}Horseless Headless Horsemann!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {unusual}Horseless Headless Horsemann!{default} for some reason.");
+		CReplyToCommand(client, "%s {default}Couldn't spawn the {unusual}Horseless Headless Horsemann!{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	
 	return Plugin_Handled;
 }
 
-bool:SpawnHorseman(Float:scale)
-{
-	new entity = CreateEntityByName(HORSEMANN);
-	if(IsValidEntity(entity))
-	{
-		DispatchSpawn(entity);
-		SetEntPropFloat(entity, Prop_Send, "m_flModelScale", scale);
-		g_pos[2] -= 10.0;
-		TeleportEntity(entity, g_pos, NULL_VECTOR, NULL_VECTOR);
-		return true;
-	}
-	return false;
-}
-
 public Action:Command_SpawnEyeBoss(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnMonoculus(fScale))
+	if (SpawnBoss("eyeball_boss", fScale, 5, 50.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {unusual}MONOCULUS!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: MONOCULUS", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {unusual}MONOCULUS!");
+		CReplyToCommand(client, "%s {default}You've spawned the {unusual}MONOCULUS!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {unusual}MONOCULUS!{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}MONOCULUS!{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
 public Action:Command_SpawnEyeBossRED(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnMonoculus(fScale, 2))
+	if (SpawnBoss("eyeball_boss", fScale, 2, 50.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {red}RED Spectral MONOCULUS!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: RED Spectral MONOCULUS", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {red}RED Spectral MONOCULUS!");
+		CReplyToCommand(client, "%s {default}You've spawned the {red}RED Spectral MONOCULUS!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {red}RED Spectral MONOCULUS!{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn {red}RED Spectral MONOCULUS!{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
 public Action:Command_SpawnEyeBossBLU(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnMonoculus(fScale, 1))
+	if (SpawnBoss("eyeball_boss", fScale, 1, 50.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {blue}BLU Spectral MONOCULUS!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: BLU Spectral MONOCULUS", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {blue}BLU Spectral MONOCULUS!");
+		CReplyToCommand(client, "%s {default}You've spawned the {blue}BLU Spectral MONOCULUS!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {blue}BLU Spectral MONOCULUS!{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn {blue}BLU Spectral MONOCULUS!{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
-}
-
-bool:SpawnMonoculus(Float:scale, team = 5)
-{
-	new entity = CreateEntityByName(MONOCULUS);
-	if (IsValidEntity(entity))
-	{
-		DispatchSpawn(entity);
-		SetEntProp(entity, Prop_Data, "m_iTeamNum", team);
-		SetEntPropFloat(entity, Prop_Send, "m_flModelScale", scale);
-		g_pos[2] += 50.0;
-		TeleportEntity(entity, g_pos, NULL_VECTOR, NULL_VECTOR);
-		return true;
-	}
-	return false;
 }
 
 public Action:Command_SpawnMerasmus(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnMerasmus(fScale))
+	if (SpawnBoss("merasmus", fScale, 0, 0.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned {unusual}Merasmus!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Merasmus", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {unusual}Merasmus!");
+		CReplyToCommand(client, "%s {default}You've spawned {unusual}Merasmus!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {unusual}Merasmus!{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}Merasmus!{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
-bool:SpawnMerasmus(Float:scale)
-{
-	new entity = CreateEntityByName(MERASMUS);
-	if (IsValidEntity(entity))
-	{
-		DispatchSpawn(entity);
-		SetEntPropFloat(entity, Prop_Send, "m_flModelScale", scale);
-		TeleportEntity(entity, g_pos, NULL_VECTOR, NULL_VECTOR);
-		return true;
-	}
-	return false;
-}
-
 public Action:Command_SpawnGreenSkeleton(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnSkeleton(fScale, "0", 1))
+	if (SpawnBoss("tf_zombie", fScale, 3, 0.0, "2", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {community}Green Skeleton!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Green Skeleton", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {community}Green Skeleton!");
+		CReplyToCommand(client, "%s {default}You've spawned {community}Green Skeleton!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {community}Green Skeleton{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn the {community}Green Skeleton{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
 public Action:Command_SpawnREDSkeleton(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s%t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnSkeleton(fScale, "1", 2))
+	if (SpawnBoss("tf_zombie", fScale, 1, 0.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {red}RED Skeleton!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: RED Skeleton", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {red}RED Skeleton!");
+		CReplyToCommand(client, "%s {default}You've spawned {red}RED Skeleton!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {red}RED Skeleton{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn the {red}RED Skeleton{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
 public Action:Command_SpawnBLUSkeleton(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnSkeleton(fScale, "2", 3))
+	if (SpawnBoss("tf_zombie", fScale, 2, 0.0, "1", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {blue}BLU Skeleton!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: BLU Skeleton", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {blue}BLU Skeleton!");
+		CReplyToCommand(client, "%s {default}You've spawned {blue}BLU Skeleton!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {blue}BLU Skeleton{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn the {blue}BLU Skeleton{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
-}
-
-bool:SpawnSkeleton(Float:scale, String:skin[1] = "0", team = 1)
-{
-	new entity = CreateEntityByName(SKELETON);
-	if (IsValidEntity(entity))
-	{
-		DispatchKeyValue(entity, "skin", skin);
-		SetEntProp(entity, Prop_Data, "m_iTeamNum", team);
-		SetEntPropFloat(entity, Prop_Send, "m_flModelScale", scale);
-		DispatchSpawn(entity);
-		TeleportEntity(entity, g_pos, NULL_VECTOR, NULL_VECTOR);
-		return true;
-	}
-	return false;
 }
 
 public Action:Command_SpawnSkeletonKing(client, args)
 {
-	if (client <= 0)
+	if (!cv_Enabled) return Plugin_Handled;
+	
+	if (!IsValidClient(client))
 	{
-		ReplyToCommand(client, "%t", "Command is in-game only");
+		CReplyToCommand(client, "%s %t", PLUGIN_TAG_COLORED, "Command is in-game only");
 		return Plugin_Handled;
 	}
 	
-	new String:szScale[16] = "0.0";
-	new Float:fScale = 0.0;
-	if (args >= 1)
+	new String:szScale[5] = "0.0";
+	new String:sGlow[5] = "0";
+	
+	new Float:fScale = 1.0;
+	new bool:bGlow = false;
+	
+	if (args > 0)
 	{
 		GetCmdArg(1, szScale, sizeof(szScale));
 		TrimString(szScale);
+		
+		GetCmdArg(2, sGlow, sizeof(sGlow));
+		TrimString(sGlow);
 
 		fScale = StringToFloat(szScale);
 		if (fScale <= 0.0)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Invalid size specified");
+			CReplyToCommand(client, "%s {default}Invalid size specified", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
 		else if (fScale <= 0.0 || (fScale < g_fBoundMin || fScale > g_fBoundMax))
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Size must be between %s and %s", g_szBoundMin, g_szBoundMax);
+			CReplyToCommand(client, "%s {default}Size must be between %s and %s", PLUGIN_TAG_COLORED, g_szBoundMin, g_szBoundMax);
 			return Plugin_Handled;
+		}
+		
+		if (StrEqual(sGlow, "1"))
+		{
+			bGlow = true;
 		}
 	}
 	
 	if(!SetTeleportEndPoint(client))
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Could not find spawn point");
+		CReplyToCommand(client, "%s {default}Could not find spawn point", PLUGIN_TAG_COLORED);
 		return Plugin_Handled;
 	}
 	
-	if(GetEntityCount() >= GetMaxEntities()-32)
-	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Too many entities have been spawned, reload the map.");
-		return Plugin_Handled;
-	}
+	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (args < 1)
-	{
-		fScale = 1.0;
-	}
-	
-	if (SpawnSkeletonKing())
+	if (SpawnBoss("tf_zombie_spawner", -1.0, 0, 0.0, "0", bGlow ? true : false, true))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {unusual}Skeleton King!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Skeleton King", client);
-		CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {unusual}Skeleton King!");
+		CReplyToCommand(client, "%s {default}You've spawned {unusual}Skeleton King!", PLUGIN_TAG_COLORED);
 	}
 	else
 	{
-		CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {unusual}Skeleton King{default} for some reason.");
-		return Plugin_Handled;
+		CReplyToCommand(client, "%s {default}Couldn't spawn the {unusual}Skeleton King{default} for some reason.", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
-bool:SpawnSkeletonKing()
+/***************************************************/
+//Spawn Function
+
+bool:SpawnBoss(const String:sEntityClass[64], Float:scale = -1.0, team = 0, Float:offset = 0.0, String:skin[1] = "-1", bool:glow = false, bool:SkeletonKing = false)
 {
-	new entity = CreateEntityByName(SKELETON2);
+	new entity = CreateEntityByName(sEntityClass);
 	if (IsValidEntity(entity))
 	{
 		DispatchSpawn(entity);
-		g_pos[2] -= 10.0;
+		if (scale != -1.0)
+		{
+			SetEntPropFloat(entity, Prop_Send, "m_flModelScale", scale);
+			if (cv_HitboxScale) ResizeHitbox(entity, sEntityClass, scale);
+		}
+		
+		if (team != 0) SetEntProp(entity, Prop_Data, "m_iTeamNum", team);
+		if (offset != 0.0) g_pos[2] -= offset;
+		if (!StrEqual(skin, "-1")) DispatchKeyValue(entity, "skin", skin);
+		if (glow) SetEntProp(entity, Prop_Send, "m_bGlowEnabled", 1);
+		
+		if (SkeletonKing)
+		{
+			SetEntProp(entity, Prop_Data, "m_nSkeletonType", 1);
+			AcceptEntityInput(entity, "Enable");
+			gSK_Spawner = entity;
+			gSK_IsSpawning = true;
+		}
+		
 		TeleportEntity(entity, g_pos, NULL_VECTOR, NULL_VECTOR);
-		SetEntProp(entity, Prop_Data, "m_nSkeletonType", 1);
-		AcceptEntityInput(entity, "Enable");
-		CreateTimer(1.0, Timer_KillSpawner, entity);
 		return true;
 	}
 	return false;
 }
 
+/***************************************************/
+//Slay Commands
+
 public Action:Command_SlayHatman(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, HORSEMANN)) != -1)
+	while ((entity = FindEntityByClassname(entity, "headless_hatman")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new Handle:g_Event = CreateEvent("pumpkin_lord_killed", true);
-			FireEvent(g_Event);
-			AcceptEntityInput(entity, "Kill");
-			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {unusual}Horseless Headless Horsemann", client);
-			LogAction(client, -1, "\"%L\" slayed boss: Horseless Headless Horsemann", client);
-			CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {unusual}Horseless Headless Horsemann");
-		}
-		else
-		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {unusual}Horseless Headless Horsemann{default} for some reason.");
+			CReplyToCommand(client, "%s {default}Couldn't slay the {unusual}Horseless Headless Horsemann{default} for some reason.", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
+		
+		new Handle:g_Event = CreateEvent("pumpkin_lord_killed", true);
+		FireEvent(g_Event);
+		AcceptEntityInput(entity, "Kill");
+		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {unusual}Horseless Headless Horsemann", client);
+		LogAction(client, -1, "\"%L\" slayed boss: Horseless Headless Horsemann", client);
+		CReplyToCommand(client, "%s {default}You've slayed the {unusual}Horseless Headless Horsemann", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
 public Action:Command_SlayEyeBoss(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, MONOCULUS)) != -1)
+	while ((entity = FindEntityByClassname(entity, "eyeball_boss")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
-			if (m_iTeamNum == 5)
-			{
-				new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
-				FireEvent(g_Event);
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {unusual}MONOCULUS!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: MONOCULUS", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {unusual}MONOCULUS!");
-			}
-			else
-			{
-				CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {unusual}MONOCULUS!{default} for some reason.");
-				return Plugin_Handled;
-			}
+			CReplyToCommand(client, "%s {default}Couldn't slay the {unusual}MONOCULUS!{default} for some reason.", PLUGIN_TAG_COLORED);
+			return Plugin_Handled;
+		}
+		
+		new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
+		if (m_iTeamNum == 5)
+		{
+			new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
+			FireEvent(g_Event);
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {unusual}MONOCULUS!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: MONOCULUS", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {unusual}MONOCULUS!", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
@@ -841,26 +872,26 @@ public Action:Command_SlayEyeBoss(client, args)
 
 public Action:Command_SlayEyeBossRED(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, MONOCULUS)) != -1)
+	while ((entity = FindEntityByClassname(entity, "eyeball_boss")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
-			if (m_iTeamNum == 2)
-			{
-				new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
-				FireEvent(g_Event);
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {red}RED Spectral MONOCULUS!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: RED Spectral MONOCULUS", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {red}RED Spectral MONOCULUS!");
-			}
-			else
-			{
-				CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {red}RED Spectral MONOCULUS!{default} for some reason.");
-				return Plugin_Handled;
-			}
+			CReplyToCommand(client, "%s {default}Couldn't slay the {red}RED Spectral MONOCULUS!{default} for some reason.", PLUGIN_TAG_COLORED);
+			return Plugin_Handled;
+		}
+		
+		new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
+		if (m_iTeamNum == 2)
+		{
+			new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
+			FireEvent(g_Event);
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {red}RED Spectral MONOCULUS!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: RED Spectral MONOCULUS", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {red}RED Spectral MONOCULUS!", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
@@ -868,26 +899,26 @@ public Action:Command_SlayEyeBossRED(client, args)
 
 public Action:Command_SlayEyeBossBLU(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, MONOCULUS)) != -1)
+	while ((entity = FindEntityByClassname(entity, "eyeball_boss")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
-			if (m_iTeamNum == 1)
-			{
-				new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
-				FireEvent(g_Event);
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {blue}BLU Spectral MONOCULUS!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: BLU Spectral MONOCULUS", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {blue}BLU Spectral MONOCULUS!");
-			}
-			else
-			{
-				CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {blue}BLU Spectral MONOCULUS!{default} for some reason.");
-				return Plugin_Handled;
-			}
+			CReplyToCommand(client, "%s {default}Couldn't slay the {blue}BLU Spectral MONOCULUS!{default} for some reason.", PLUGIN_TAG_COLORED);
+			return Plugin_Handled;
+		}
+		
+		new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
+		if (m_iTeamNum == 1)
+		{
+			new Handle:g_Event = CreateEvent("eyeball_boss_killed", true);
+			FireEvent(g_Event);
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {blue}BLU Spectral MONOCULUS!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: BLU Spectral MONOCULUS", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {blue}BLU Spectral MONOCULUS!", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
@@ -895,47 +926,47 @@ public Action:Command_SlayEyeBossBLU(client, args)
 
 public Action:Command_SlayMerasmus(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while((entity = FindEntityByClassname(entity, MERASMUS)) != -1)
+	while((entity = FindEntityByClassname(entity, "merasmus")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new Handle:g_Event = CreateEvent("merasmus_killed", true);
-			FireEvent(g_Event);
-			AcceptEntityInput(entity, "Kill");
-			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed {unusual}Merasmus", client);
-			LogAction(client, -1, "\"%L\" slayed boss: Merasmus", client);
-			CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {unusual}Merasmus");
-		}
-		else
-		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay {unusual}Merasmus{default} for some reason.");
+			CReplyToCommand(client, "%s {default}Couldn't slay {unusual}Merasmus{default} for some reason.", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
 		}
+		
+		new Handle:g_Event = CreateEvent("merasmus_killed", true);
+		FireEvent(g_Event);
+		AcceptEntityInput(entity, "Kill");
+		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed {unusual}Merasmus", client);
+		LogAction(client, -1, "\"%L\" slayed boss: Merasmus", client);
+		CReplyToCommand(client, "%s {default}You've slayed the {unusual}Merasmus", PLUGIN_TAG_COLORED);
 	}
 	return Plugin_Handled;
 }
 
 public Action:Command_SlayGreenSkeleton(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, SKELETON)) != -1)
+	while ((entity = FindEntityByClassname(entity, "tf_zombie")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
-			if (m_iTeamNum == 1)
-			{
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {community}Green Skeleton!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: Green Skeleton", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {community}Green Skeleton");
-			}
-		}
-		else
-		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {community}Green Skeleton{default} for some reason.");
+			CReplyToCommand(client, "%s {default}Couldn't slay the {community}Green Skeleton{default} for some reason.", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
+		}
+		
+		new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
+		if (m_iTeamNum == 3)
+		{
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {community}Green Skeleton!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: Green Skeleton", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {community}Green Skeleton", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
@@ -943,24 +974,24 @@ public Action:Command_SlayGreenSkeleton(client, args)
 
 public Action:Command_SlayREDSkeleton(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, SKELETON)) != -1)
+	while ((entity = FindEntityByClassname(entity, "tf_zombie")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
-			if (m_iTeamNum == 2)
-			{
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {red}RED Skeleton!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: RED Skeleton", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {red}RED Skeleton");
-			}
-		}
-		else
-		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {red}RED Skeleton{default} for some reason.");
+			CReplyToCommand(client, "%s {default}Couldn't slay the {red}RED Skeleton{default} for some reason.", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
+		}
+		
+		new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
+		if (m_iTeamNum == 1)
+		{
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {red}RED Skeleton!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: RED Skeleton", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {red}RED Skeleton", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
@@ -968,24 +999,24 @@ public Action:Command_SlayREDSkeleton(client, args)
 
 public Action:Command_SlayBLUSkeleton(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, SKELETON)) != -1)
+	while ((entity = FindEntityByClassname(entity, "tf_zombie")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
-			if (m_iTeamNum == 3)
-			{
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {blue}BLU Skeleton!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: BLU Skeleton", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {blue}BLU Skeleton");
-			}
-		}
-		else
-		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {blue}BLU Skeleton{default} for some reason.");
+			CReplyToCommand(client, "%s {default}Couldn't slay the {blue}BLU Skeleton{default} for some reason.", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
+		}
+		
+		new m_iTeamNum = GetEntProp(entity, Prop_Data, "m_iTeamNum");
+		if (m_iTeamNum == 2)
+		{
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {blue}BLU Skeleton!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: BLU Skeleton", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {blue}BLU Skeleton", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
@@ -993,36 +1024,32 @@ public Action:Command_SlayBLUSkeleton(client, args)
 
 public Action:Command_SlaySkeletonKing(client, args)
 {
+	if (!cv_Enabled) return Plugin_Handled;
+	
 	new entity = -1;
-	while ((entity = FindEntityByClassname(entity, SKELETON2)) != -1)
+	while ((entity = FindEntityByClassname(entity, "tf_zombie")) != -1)
 	{
-		if(IsValidEntity(entity))
+		if (!IsValidEntity(entity))
 		{
-			new SkeletonType = GetEntProp(entity, Prop_Data, "m_nSkeletonType");
-			if (SkeletonType == 1)
-			{
-				AcceptEntityInput(entity, "Kill");
-				CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {unusual}Skeleton King!", client);
-				LogAction(client, -1, "\"%L\" slayed boss: Skeleton King", client);
-				CReplyToCommand(client, "{unusual}[BOSS] {default}You've slayed the {unusual}Skeleton King");
-			}
-		}
-		else
-		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't slay the {unusual}Skeleton King{default} for some reason.");
+			CReplyToCommand(client, "%s {default}Couldn't slay the {unusual}Skeleton King{default} for some reason.", PLUGIN_TAG_COLORED);
 			return Plugin_Handled;
+		}
+		
+		decl String:sBuffer[32];
+		GetEntPropString(entity, Prop_Data, "m_iName", sBuffer, sizeof(sBuffer));
+		
+		if (StrEqual(sBuffer, "SkeletonKing"))
+		{
+			AcceptEntityInput(entity, "Kill");
+			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s slayed the {unusual}Skeleton King!", client);
+			LogAction(client, -1, "\"%L\" slayed boss: Skeleton King", client);
+			CReplyToCommand(client, "%s {default}You've slayed the {unusual}Skeleton King", PLUGIN_TAG_COLORED);
 		}
 	}
 	return Plugin_Handled;
 }
 
-public Action:Timer_KillSpawner(Handle:timer, any:entity)
-{
-	if(IsValidEntity(entity))
-	{
-		RemoveEdict(entity);
-	}
-}
+/***************************************************/
 
 SetTeleportEndPoint(client)
 {
@@ -1037,7 +1064,7 @@ SetTeleportEndPoint(client)
 
 	new Handle:trace = TR_TraceRayFilterEx(vOrigin, vAngles, MASK_SHOT, RayType_Infinite, TraceEntityFilterPlayer);
 
-	if(TR_DidHit(trace))
+	if (TR_DidHit(trace))
 	{
 		TR_GetEndPosition(vStart, trace);
 		GetVectorDistance(vOrigin, vStart, false);
@@ -1064,33 +1091,46 @@ public bool:TraceEntityFilterPlayer(entity, contentsMask)
 
 public OnEntityCreated(entity, const String:classname[])
 {
-	if(StrEqual(classname, HEALTHBAR_CLASS))
+	if (StrEqual(classname, "monster_resource"))
 	{
 		g_healthBar = entity;
 	}
-	else if (g_trackEntity == -1 && StrEqual(classname, HORSEMANN))
+	else if (g_trackEntity == -1 && StrEqual(classname, "headless_hatman"))
 	{
 		g_trackEntity = entity;
 		SDKHook(entity, SDKHook_SpawnPost, UpdateBossHealth);
 		SDKHook(entity, SDKHook_OnTakeDamagePost, OnHorsemannDamaged);
 	}
-	else if (g_trackEntity == -1 && StrEqual(classname, MONOCULUS))
+	else if (g_trackEntity == -1 && StrEqual(classname, "eyeball_boss"))
 	{
 		g_trackEntity = entity;
 		SDKHook(entity, SDKHook_SpawnPost, UpdateBossHealth);
 		SDKHook(entity, SDKHook_OnTakeDamagePost, OnMonoculusDamaged);
 	}
-	else if (g_trackEntity == -1 && StrEqual(classname, MERASMUS))
+	else if (g_trackEntity == -1 && StrEqual(classname, "merasmus"))
 	{
 		g_trackEntity = entity;
 		SDKHook(entity, SDKHook_SpawnPost, UpdateBossHealth);
 		SDKHook(entity, SDKHook_OnTakeDamagePost, OnMerasmusDamaged);
 	}
-	else if (g_trackEntity == -1 && StrEqual(classname, SKELETON2))
+	else if (g_trackEntity == -1 && StrEqual(classname, "tf_zombie_spawner"))
 	{
 		g_trackEntity = entity;
 		SDKHook(entity, SDKHook_SpawnPost, UpdateBossHealth);
 		SDKHook(entity, SDKHook_OnTakeDamagePost, OnSkeletonKingDamaged);
+	}
+	
+	if (StrEqual(classname, "tf_zombie") && gSK_IsSpawning)
+	{		
+		DispatchKeyValue(entity, "targetname", "SkeletonKing");
+				
+		if (IsValidEntity(gSK_Spawner))
+		{
+			AcceptEntityInput(gSK_Spawner, "kill");
+			gSK_Spawner = -1;
+		}
+		
+		gSK_IsSpawning = false;
 	}
 }
 
@@ -1099,10 +1139,10 @@ public OnEntityDestroyed(entity)
 	if (entity == -1) return;
 	else if (entity == g_trackEntity)
 	{
-		g_trackEntity = FindEntityByClassname(-1, HORSEMANN);
+		g_trackEntity = FindEntityByClassname(-1, "headless_hatman");
 		if (g_trackEntity == entity)
 		{
-			g_trackEntity = FindEntityByClassname(entity, HORSEMANN);
+			g_trackEntity = FindEntityByClassname(entity, "headless_hatman");
 		}
 		if (g_trackEntity > -1)
 		{
@@ -1112,10 +1152,10 @@ public OnEntityDestroyed(entity)
 	}
 	else if (entity == g_trackEntity)
 	{
-		g_trackEntity = FindEntityByClassname(-1, MONOCULUS);
+		g_trackEntity = FindEntityByClassname(-1, "eyeball_boss");
 		if (g_trackEntity == entity)
 		{
-			g_trackEntity = FindEntityByClassname(entity, MONOCULUS);
+			g_trackEntity = FindEntityByClassname(entity, "eyeball_boss");
 		}
 		if (g_trackEntity > -1)
 		{
@@ -1125,10 +1165,10 @@ public OnEntityDestroyed(entity)
 	}
 	else if (entity == g_trackEntity)
 	{
-		g_trackEntity = FindEntityByClassname(-1, MERASMUS);
+		g_trackEntity = FindEntityByClassname(-1, "merasmus");
 		if (g_trackEntity == entity)
 		{
-			g_trackEntity = FindEntityByClassname(entity, MERASMUS);
+			g_trackEntity = FindEntityByClassname(entity, "merasmus");
 		}
 		if (g_trackEntity > -1)
 		{
@@ -1138,10 +1178,10 @@ public OnEntityDestroyed(entity)
 	}
 	else if (entity == g_trackEntity)
 	{
-		g_trackEntity = FindEntityByClassname(-1, SKELETON2);
+		g_trackEntity = FindEntityByClassname(-1, "tf_zombie_spawner");
 		if (g_trackEntity == entity)
 		{
-			g_trackEntity = FindEntityByClassname(entity, SKELETON2);
+			g_trackEntity = FindEntityByClassname(entity, "tf_zombie_spawner");
 		}
 		if (g_trackEntity > -1)
 		{
@@ -1177,14 +1217,14 @@ public OnSkeletonKingDamaged(victim, attacker, inflictor, Float:damage, damagety
 
 public UpdateDeathEvent(entity)
 {
-	if(IsValidEntity(entity))
+	if (IsValidEntity(entity))
 	{
 		new maxHP = GetEntProp(entity, Prop_Data, "m_iMaxHealth");
 		new HP = GetEntProp(entity, Prop_Data, "m_iHealth");
-		if(HP <= (maxHP * 0.75))
+		if (HP <= (maxHP * 0.75))
 		{
 			SetEntProp(entity, Prop_Data, "m_iHealth", 0);
-			if(HP <= -1)
+			if (HP <= -1)
 			{
 				SetEntProp(entity, Prop_Data, "m_takedamage", 0);
 			}
@@ -1206,21 +1246,29 @@ public UpdateBossHealth(entity)
 		}
 		else
 		{
-			percentage = RoundToCeil(float(HP) / (maxHP / 4) * HEALTHBAR_MAX);
+			percentage = RoundToCeil(float(HP) / (maxHP / 4) * 255);
 		}
 	}
 	else
 	{
 		percentage = 0;
 	}	
-	SetEntProp(g_healthBar, Prop_Send, HEALTHBAR_PROPERTY, percentage);
+	SetEntProp(g_healthBar, Prop_Send, "m_iBossHealthPercentageByte", percentage);
 }
+
+/***************************************************/
+//Natives
 
 public Native_SpawnHatman(Handle:plugin, numParams)
 {
+	if (!cv_Enabled)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Plugin currently disabled.");
+	}
+	
 	new client = GetNativeCell(1);
 	
-	if (client != 0 && !IsValidClient(client))
+	if (!IsValidClient(client))
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Hatman, invalid client.");
 	}
@@ -1230,21 +1278,22 @@ public Native_SpawnHatman(Handle:plugin, numParams)
 	g_pos[2] = Float:GetNativeCell(4);
 	new bool:spew = GetNativeCell(5);
 	new Float:scale = Float:GetNativeCell(6);
+	new bool:bGlow = GetNativeCell(7);
 	
-	if (SpawnHorseman(scale))
+	if (SpawnBoss("headless_hatman", scale, 0, 10.0, "0", bGlow))
 	{
 		if (spew)
 		{
 			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {unusual}Horseless Headless Horsemann via natives!", client);
 			LogAction(client, -1, "\"%L\" spawned boss via natives: Horseless Headless Horsemann", client);
-			CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {unusual}Horseless Headless Horsemann via natives!");
+			CReplyToCommand(client, "%s {default}You've spawned the {unusual}Horseless Headless Horsemann via natives!", PLUGIN_TAG_COLORED);
 		}
 	}
 	else
 	{
 		if (spew)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {unusual}Horseless Headless Horsemann!{default} for some reason via natives.");
+			CReplyToCommand(client, "%s {default}Couldn't spawn the {unusual}Horseless Headless Horsemann!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 		}
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Hatman, could not spawn Hatman.");
 	}
@@ -1252,9 +1301,14 @@ public Native_SpawnHatman(Handle:plugin, numParams)
 
 public Native_SpawnEyeboss(Handle:plugin, numParams)
 {
+	if (!cv_Enabled)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Plugin currently disabled.");
+	}
+	
 	new client = GetNativeCell(1);
 	
-	if (client != 0 && !IsValidClient(client))
+	if (!IsValidClient(client))
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss, invalid client.");
 	}
@@ -1265,8 +1319,9 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 	new bool:spew = GetNativeCell(5);
 	new Float:scale = Float:GetNativeCell(6);
 	new type = GetNativeCell(7);
+	new bool:bGlow = GetNativeCell(8);
 	
-	if (SpawnMonoculus(scale, type))
+	if (SpawnBoss("eyeball_boss", scale, type, 50.0, "0", bGlow))
 	{
 		if (spew)
 		{
@@ -1276,19 +1331,19 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 				{
 					CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {unusual}MONOCULUS via natives!", client);
 					LogAction(client, -1, "\"%L\" spawned boss via natives: MONOCULUS", client);
-					CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {unusual}MONOCULUS via natives!");
+					CReplyToCommand(client, "%s {default}You've spawned the {unusual}MONOCULUS via natives!", PLUGIN_TAG_COLORED);
 				}
 			case 1:
 				{
 					CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {red}RED Spectral MONOCULUS via natives!", client);
 					LogAction(client, -1, "\"%L\" spawned boss via natives: RED Spectral MONOCULUS", client);
-					CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {red}RED Spectral MONOCULUS via natives!");
+					CReplyToCommand(client, "%s {default}You've spawned the {red}RED Spectral MONOCULUS via natives!", PLUGIN_TAG_COLORED);
 				}
 			case 2:
 				{
 					CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {blue}BLU Spectral MONOCULUS via natives!", client);
 					LogAction(client, -1, "\"%L\" spawned boss via natives: BLU Spectral MONOCULUS", client);
-					CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned the {blue}BLU Spectral MONOCULUS via natives!");
+					CReplyToCommand(client, "%s {default}You've spawned the {blue}BLU Spectral MONOCULUS via natives!", PLUGIN_TAG_COLORED);
 				}
 			}
 		}
@@ -1299,17 +1354,17 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 		{
 		case 0:
 			{
-				if (spew) CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {unusual}MONOCULUS!{default} for some reason via natives.");
+				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'regular', could not spawn Eyeboss 'regular'.");
 			}
 		case 1:
 			{
-				if (spew) CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {red}RED Spectral MONOCULUS!{default} for some reason via natives.");
+				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn {red}RED Spectral MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'red', could not spawn Eyeboss 'red'.");
 			}
 		case 2:
 			{
-				if (spew) CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {blue}BLU Spectral MONOCULUS!{default} for some reason via natives.");
+				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn {blue}BLU Spectral MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'blue', could not spawn Eyeboss 'blue'.");
 			}
 		}
@@ -1318,9 +1373,14 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 
 public Native_SpawnMerasmus(Handle:plugin, numParams)
 {
+	if (!cv_Enabled)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Plugin currently disabled.");
+	}
+	
 	new client = GetNativeCell(1);
 	
-	if (client != 0 && !IsValidClient(client))
+	if (!IsValidClient(client))
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Merasmus, invalid client.");
 	}
@@ -1330,21 +1390,22 @@ public Native_SpawnMerasmus(Handle:plugin, numParams)
 	g_pos[2] = Float:GetNativeCell(4);
 	new bool:spew = GetNativeCell(5);
 	new Float:scale = Float:GetNativeCell(6);
+	new bool:bGlow = GetNativeCell(7);
 	
-	if (SpawnMerasmus(scale))
+	if (SpawnBoss("merasmus", scale, 0, 0.0, "0", bGlow))
 	{
 		if (spew)
 		{
 			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned {unusual}Merasmus via natives!", client);
 			LogAction(client, -1, "\"%L\" spawned boss via natives: Merasmus", client);
-			CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {unusual}Merasmus via natives!");
+			CReplyToCommand(client, "%s {default}You've spawned {unusual}Merasmus via natives!", PLUGIN_TAG_COLORED);
 		}
 	}
 	else
 	{
 		if (spew)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn {unusual}Merasmus!{default} for some reason via natives.");
+			CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}Merasmus!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 		}
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Merasmus, could not spawn Merasmus.");
 	}
@@ -1352,9 +1413,14 @@ public Native_SpawnMerasmus(Handle:plugin, numParams)
 
 public Native_SpawnSkeleton(Handle:plugin, numParams)
 {
+	if (!cv_Enabled)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Plugin currently disabled.");
+	}
+	
 	new client = GetNativeCell(1);
 	
-	if (client != 0 && !IsValidClient(client))
+	if (!IsValidClient(client))
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton, invalid client.");
 	}
@@ -1365,6 +1431,7 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 	new bool:spew = GetNativeCell(5);
 	new Float:scale = Float:GetNativeCell(6);
 	new type = GetNativeCell(7);
+	new bool:bGlow = GetNativeCell(8);
 	
 	new String:sSkin[1] = "0";
 	
@@ -1375,7 +1442,7 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 	case 3:	Format(sSkin, sizeof(sSkin), "2");
 	}
 	
-	if (SpawnSkeleton(scale, sSkin, type))
+	if (SpawnBoss("tf_zombie", scale, type, 0.0, sSkin, bGlow))
 	{
 		if (spew)
 		{
@@ -1385,19 +1452,19 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 				{
 					CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {community}Green Skeleton via natives!", client);
 					LogAction(client, -1, "\"%L\" spawned boss via natives: Green Skeleton", client);
-					CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {community}Green Skeleton via natives!");
+					CReplyToCommand(client, "%s {default}You've spawned {community}Green Skeleton via natives!", PLUGIN_TAG_COLORED);
 				}
 			case 1:
 				{
 					CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {red}RED Skeleton via natives!", client);
 					LogAction(client, -1, "\"%L\" spawned boss via natives: RED Skeleton", client);
-					CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {red}RED Skeleton via natives!");
+					CReplyToCommand(client, "%s {default}You've spawned {red}RED Skeleton via natives!", PLUGIN_TAG_COLORED);
 				}
 			case 2:
 				{
 					CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {blue}BLU Skeleton via natives!", client);
 					LogAction(client, -1, "\"%L\" spawned boss via natives: BLU Skeleton", client);
-					CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {blue}BLU Skeleton via natives!");
+					CReplyToCommand(client, "%s {default}You've spawned {blue}BLU Skeleton via natives!", PLUGIN_TAG_COLORED);
 				}
 			}
 		}
@@ -1408,17 +1475,17 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 		{
 		case 0:
 			{
-				if (spew) CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {community}Green Skeleton{default} for some reason via natives.");
+				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn the {community}Green Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'Green', could not spawn Eyeboss 'Green'.");
 			}
 		case 1:
 			{
-				if (spew) CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {red}RED Skeleton{default} for some reason via natives.");
+				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn the {red}RED Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'Red', could not spawn Eyeboss 'Red'.");
 			}
 		case 2:
 			{
-				if (spew) CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {blue}BLU Skeleton{default} for some reason via natives.");
+				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn the {blue}BLU Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'Blue', could not spawn Eyeboss 'Blue'.");
 			}
 		}
@@ -1427,9 +1494,14 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 
 public Native_SpawnSkeletonKing(Handle:plugin, numParams)
 {
+	if (!cv_Enabled)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Plugin currently disabled.");
+	}
+	
 	new client = GetNativeCell(1);
 	
-	if (client != 0 && !IsValidClient(client))
+	if (!IsValidClient(client))
 	{
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton King, invalid client.");
 	}
@@ -1438,34 +1510,88 @@ public Native_SpawnSkeletonKing(Handle:plugin, numParams)
 	g_pos[1] = Float:GetNativeCell(3);
 	g_pos[2] = Float:GetNativeCell(4);
 	new bool:spew = GetNativeCell(5);
+	new bool:bGlow = GetNativeCell(6);
 	
-	if (SpawnSkeletonKing())
+	if (SpawnBoss("tf_zombie_spawner", 1.0, 0, 0.0, "-1", bGlow, true))
 	{
 		if (spew)
 		{
 			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {unusual}Skeleton King via natives!", client);
 			LogAction(client, -1, "\"%L\" spawned boss via natives: Skeleton King", client);
-			CReplyToCommand(client, "{unusual}[BOSS] {default}You've spawned {unusual}Skeleton King via natives!");
+			CReplyToCommand(client, "%s {default}You've spawned {unusual}Skeleton King via natives!", PLUGIN_TAG_COLORED);
 		}
 	}
 	else
 	{
 		if (spew)
 		{
-			CReplyToCommand(client, "{unusual}[BOSS] {default}Couldn't spawn the {unusual}Skeleton King{default} for some reason via natives.");
+			CReplyToCommand(client, "%s {default}Couldn't spawn the {unusual}Skeleton King{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 		}
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton King, could not spawn Skeleton King.");
 	}
 }
-stock bool:IsValidClient(i, bool:replay = true)
+
+/***************************************************/
+
+bool:IsValidClient(i, bool:replay = true)
 {
-	if(i <= 0 || i > MaxClients || !IsClientInGame(i) || GetEntProp(i, Prop_Send, "m_bIsCoaching")) return false;
-	if(replay && (IsClientSourceTV(i) || IsClientReplay(i))) return false;
+	if (i <= 0 || i > MaxClients || !IsClientInGame(i) || GetEntProp(i, Prop_Send, "m_bIsCoaching")) return false;
+	if (replay && (IsClientSourceTV(i) || IsClientReplay(i))) return false;
 	return true;
 }
 
+bool:CheckEntityLimit(client)
+{
+	if (GetEntityCount() >= GetMaxEntities()-32)
+	{
+		CReplyToCommand(client, "%s {default}Too many entities have been spawned, reload the map.", PLUGIN_TAG_COLORED);
+		return true;
+	}
+	return false;
+}
+
+ResizeHitbox(entity, const String:sEntityClass[64], Float:fScale = 1.0)
+{
+	decl Float:vecBossMin[3], Float:vecBossMax[3];
+	if (StrEqual(sEntityClass, "headless_hatman"))
+	{
+		vecBossMin[0] = -25.5, vecBossMin[1] = -38.5, vecBossMin[2] = -11.0;
+		vecBossMax[0] = 18.0, vecBossMax[1] = 38.0, vecBossMax[2] = 138.5;
+	}
+	else if (StrEqual(sEntityClass, "eyeball_boss"))
+	{
+		vecBossMin[0] = -50.0, vecBossMin[1] = -50.0, vecBossMin[2] = -50.0;
+		vecBossMax[0] = 50.0, vecBossMax[1] = 50.0, vecBossMax[2] = 50.0;
+	}
+	else if (StrEqual(sEntityClass, "merasmus"))
+	{
+		vecBossMin[0] = -58.5, vecBossMin[1] = -49.5, vecBossMin[2] = -30.5;
+		vecBossMax[0] = 92.5, vecBossMax[1] = 49.5, vecBossMax[2] = 190.5;
+	}
+	
+	decl Float:vecScaledBossMin[3], Float:vecScaledBossMax[3];
+	
+	vecScaledBossMin = vecBossMin;
+	vecScaledBossMax = vecBossMax;
+	
+	ScaleVector(vecScaledBossMin, fScale);
+	ScaleVector(vecScaledBossMax, fScale);
+	SetEntPropVector(entity, Prop_Send, "m_vecMins", vecScaledBossMin);
+	SetEntPropVector(entity, Prop_Send, "m_vecMaxs", vecScaledBossMax);
+}
+
+//Lets put this behemoth of a function at the bottom shall we... get it the hell out of the way.
 public OnMapStart()
 {
+	g_healthBar = FindEntityByClassname(-1, "monster_resource");
+	if (g_healthBar == -1)
+	
+	g_healthBar = CreateEntityByName("monster_resource");
+	if (g_healthBar != -1)
+	{
+		DispatchSpawn(g_healthBar);
+	}
+	
 	PrecacheModel("models/bots/headless_hatman.mdl", true); 
 	PrecacheModel("models/weapons/c_models/c_bigaxe/c_bigaxe.mdl", true);
 	
@@ -1531,9 +1657,9 @@ public OnMapStart()
 	for(new i = 1; i <= 13; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_eyeball/eyeball0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_eyeball/eyeball0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_eyeball/eyeball%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1562,9 +1688,9 @@ public OnMapStart()
 	for(new i = 1; i <= 17; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_appears0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_appears0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_appears%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1573,9 +1699,9 @@ public OnMapStart()
 	for(new i = 1; i <= 11; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_attacks0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_attacks0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_attacks%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1584,9 +1710,9 @@ public OnMapStart()
 	for(new i = 1; i <= 54; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_headbomb0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_headbomb0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_headbomb%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1595,9 +1721,9 @@ public OnMapStart()
 	for(new i = 1; i <= 33; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_held_up0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_held_up0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_held_up%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1627,9 +1753,9 @@ public OnMapStart()
 	for(new i = 1; i <= 12; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_defeated0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_defeated0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_defeated%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1649,9 +1775,9 @@ public OnMapStart()
 	
 	for(new i = 1; i <= 26; i++) {
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_headbomb_hit0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_headbomb_hit0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_headbomb_hit%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1660,9 +1786,9 @@ public OnMapStart()
 	for(new i = 1; i <= 19; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_heal10%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_heal10%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_heal1%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1671,9 +1797,9 @@ public OnMapStart()
 	for(new i = 1; i <= 49; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_idles0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_idles0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_idles%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1682,9 +1808,9 @@ public OnMapStart()
 	for(new i = 1; i <= 16; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_leaving0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_leaving0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_leaving%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1707,9 +1833,9 @@ public OnMapStart()
 	for(new i = 2; i <= 13; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
-		if(i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_staff_magic0%d.wav", i);
+		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_staff_magic0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_staff_magic%d.wav", i);
-		if(FileExists(iString))
+		if (FileExists(iString))
 		{
 			PrecacheSound(iString, true);
 		}
@@ -1732,15 +1858,4 @@ public OnMapStart()
 	
 	PrecacheModel("models/bots/skeleton_sniper/skeleton_sniper.mdl", true);
 	PrecacheModel("models/bots/skeleton_sniper_boss/skeleton_sniper_boss.mdl", true);
-	
-	g_healthBar = FindEntityByClassname(-1, HEALTHBAR_CLASS);
-	if(g_healthBar == -1)
-	
-	g_healthBar = CreateEntityByName(HEALTHBAR_CLASS);
-	if(g_healthBar != -1)
-	{
-		DispatchSpawn(g_healthBar);
-	}
-	
-	g_NumClients = 0;
 }
