@@ -7,13 +7,13 @@
 #include <autoexecconfig>
 
 #define PLUGIN_NAME	"[TF2] Boss Spawns"
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.5"
 
 #define PLUGIN_TAG "[BossSpawns]"
 #define PLUGIN_TAG_COLORED "{unusual}[BossSpawns]"
 
-new Handle:ConVars[4] = {INVALID_HANDLE, ...};
-new bool:cv_Enabled = true, cv_HitboxScale = true;
+new Handle:ConVars[5] = {INVALID_HANDLE, ...};
+new bool:cv_Enabled = true, cv_HitboxScale = true, cv_SpawnSounds = true;
 
 new Float:g_pos[3];
 
@@ -28,6 +28,18 @@ new g_healthBar = -1;
 
 new bool:gSK_IsSpawning = false;
 new gSK_Spawner = -1;
+
+static const String:SkeletonKingSpawnSounds[][] = {
+	"vo/halloween_mann_brothers/sf13_blutarch_enemies10.wav",
+	"vo/halloween_mann_brothers/sf13_blutarch_enemies11.wav",
+	"vo/halloween_mann_brothers/sf13_blutarch_enemies12.wav",
+	"vo/halloween_mann_brothers/sf13_blutarch_enemies13.wav",
+	"vo/halloween_mann_brothers/sf13_blutarch_enemies13.wav",
+	"vo/halloween_mann_brothers/sf13_redmond_enemies05.wav",
+	"vo/halloween_mann_brothers/sf13_redmond_enemies06.wav",
+	"vo/halloween_mann_brothers/sf13_redmond_enemies07.wav",
+	"vo/halloween_mann_brothers/sf13_redmond_enemies08.wav"
+};
 
 /***************************************************/
 //Plugin Starts
@@ -72,6 +84,7 @@ public OnPluginStart()
 	ConVars[1] = AutoExecConfig_CreateConVar("sm_bossspawns_status", "1", "Status of the plugin: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 	ConVars[2] = AutoExecConfig_CreateConVar("sm_bossspawns_hitboxes", "1", "Enable hitbox scaling on spawned bosses: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 	ConVars[3] = AutoExecConfig_CreateConVar("sm_bossspawns_bounds", "0.1, 5.0", "Lower (optional) and upper bounds for resizing, separated with a comma.", FCVAR_PLUGIN);
+	ConVars[4] = AutoExecConfig_CreateConVar("sm_bossspawns_spawnsounds", "1", "Lower (optional) and upper bounds for resizing, separated with a comma.", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 	
 	AutoExecConfig_ExecuteFile();
 	
@@ -108,6 +121,7 @@ public OnConfigsExecuted()
 	cv_Enabled = GetConVarBool(ConVars[1]);
 	cv_HitboxScale = GetConVarBool(ConVars[2]);
 	ParseConVarToLimits(ConVars[3], g_szBoundMin, sizeof(g_szBoundMin), g_fBoundMin, g_szBoundMax, sizeof(g_szBoundMax), g_fBoundMax);
+	cv_SpawnSounds = GetConVarBool(ConVars[4]);
 	
 	if (cv_Enabled)
 	{
@@ -137,6 +151,10 @@ public HandleCvars(Handle:cvar, const String:oldValue[], const String:newValue[]
 	else if (cvar == ConVars[3])
 	{
 		ParseConVarToLimits(ConVars[3], g_szBoundMin, sizeof(g_szBoundMin), g_fBoundMin, g_szBoundMax, sizeof(g_szBoundMax), g_fBoundMax);
+	}
+	else if (cvar == ConVars[4])
+	{
+		cv_SpawnSounds = bool:iNewValue;
 	}
 }
 
@@ -392,7 +410,7 @@ public Action:Command_SpawnEyeBossRED(client, args)
 	
 	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (SpawnBoss("eyeball_boss", fScale, 2, 50.0, "0", bGlow ? true : false))
+	if (SpawnBoss("eyeball_boss", fScale, 2, -25.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {red}RED Spectral MONOCULUS!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: RED Spectral MONOCULUS", client);
@@ -455,7 +473,7 @@ public Action:Command_SpawnEyeBossBLU(client, args)
 	
 	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (SpawnBoss("eyeball_boss", fScale, 1, 50.0, "0", bGlow ? true : false))
+	if (SpawnBoss("eyeball_boss", fScale, 1, -25.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {blue}BLU Spectral MONOCULUS!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: BLU Spectral MONOCULUS", client);
@@ -544,7 +562,7 @@ public Action:Command_SpawnGreenSkeleton(client, args)
 	new String:szScale[5] = "0.0";
 	new String:sGlow[5] = "0";
 	
-	new Float:fScale = 1.0;
+	new Float:fScale = -1.0;
 	new bool:bGlow = false;
 	
 	if (args > 0)
@@ -581,7 +599,7 @@ public Action:Command_SpawnGreenSkeleton(client, args)
 	
 	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (SpawnBoss("tf_zombie", fScale, 3, 0.0, "2", bGlow ? true : false))
+	if (SpawnBoss("tf_zombie", fScale, 0, 0.0, "2", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {community}Green Skeleton!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Green Skeleton", client);
@@ -607,7 +625,7 @@ public Action:Command_SpawnREDSkeleton(client, args)
 	new String:szScale[5] = "0.0";
 	new String:sGlow[5] = "0";
 	
-	new Float:fScale = 1.0;
+	new Float:fScale = -1.0;
 	new bool:bGlow = false;
 	
 	if (args > 0)
@@ -644,7 +662,7 @@ public Action:Command_SpawnREDSkeleton(client, args)
 	
 	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (SpawnBoss("tf_zombie", fScale, 1, 0.0, "0", bGlow ? true : false))
+	if (SpawnBoss("tf_zombie", fScale, 2, 0.0, "0", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {red}RED Skeleton!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: RED Skeleton", client);
@@ -670,7 +688,7 @@ public Action:Command_SpawnBLUSkeleton(client, args)
 	new String:szScale[5] = "0.0";
 	new String:sGlow[5] = "0";
 	
-	new Float:fScale = 1.0;
+	new Float:fScale = -1.0;
 	new bool:bGlow = false;
 	
 	if (args > 0)
@@ -707,7 +725,7 @@ public Action:Command_SpawnBLUSkeleton(client, args)
 	
 	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (SpawnBoss("tf_zombie", fScale, 2, 0.0, "1", bGlow ? true : false))
+	if (SpawnBoss("tf_zombie", fScale, 3, 0.0, "1", bGlow ? true : false))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {blue}BLU Skeleton!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: BLU Skeleton", client);
@@ -775,6 +793,11 @@ public Action:Command_SpawnSkeletonKing(client, args)
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {unusual}Skeleton King!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Skeleton King", client);
 		CReplyToCommand(client, "%s {default}You've spawned {unusual}Skeleton King!", PLUGIN_TAG_COLORED);
+		
+		if (cv_SpawnSounds)
+		{
+			EmitSoundToAll(SkeletonKingSpawnSounds[GetRandomInt(0, 8)], client, _, _, _, 1.0);
+		}
 	}
 	else
 	{
@@ -798,14 +821,14 @@ bool:SpawnBoss(const String:sEntityClass[64], Float:scale = -1.0, team = 0, Floa
 			if (cv_HitboxScale) ResizeHitbox(entity, sEntityClass, scale);
 		}
 		
-		if (team != 0) SetEntProp(entity, Prop_Data, "m_iTeamNum", team);
+		if (team != 0) SetEntProp(entity, Prop_Send, "m_iTeamNum", team);
 		if (offset != 0.0) g_pos[2] -= offset;
 		if (!StrEqual(skin, "-1")) DispatchKeyValue(entity, "skin", skin);
 		if (glow) SetEntProp(entity, Prop_Send, "m_bGlowEnabled", 1);
 		
 		if (SkeletonKing)
 		{
-			SetEntProp(entity, Prop_Data, "m_nSkeletonType", 1);
+			SetEntProp(entity, Prop_Send, "m_nSkeletonType", 1);
 			AcceptEntityInput(entity, "Enable");
 			gSK_Spawner = entity;
 			gSK_IsSpawning = true;
@@ -1270,19 +1293,19 @@ public Native_SpawnHatman(Handle:plugin, numParams)
 	
 	if (!IsValidClient(client))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Hatman, invalid client.");
+		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Hatman, invalid client index.");
 	}
 	
 	g_pos[0] = Float:GetNativeCell(2);
 	g_pos[1] = Float:GetNativeCell(3);
 	g_pos[2] = Float:GetNativeCell(4);
-	new bool:spew = GetNativeCell(5);
-	new Float:scale = Float:GetNativeCell(6);
-	new bool:bGlow = GetNativeCell(7);
+	new Float:scale = Float:GetNativeCell(5);
+	new bool:bGlow = GetNativeCell(6);
+	new bool:bSpew = GetNativeCell(7);
 	
 	if (SpawnBoss("headless_hatman", scale, 0, 10.0, "0", bGlow))
 	{
-		if (spew)
+		if (bSpew)
 		{
 			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned the {unusual}Horseless Headless Horsemann via natives!", client);
 			LogAction(client, -1, "\"%L\" spawned boss via natives: Horseless Headless Horsemann", client);
@@ -1291,7 +1314,7 @@ public Native_SpawnHatman(Handle:plugin, numParams)
 	}
 	else
 	{
-		if (spew)
+		if (bSpew)
 		{
 			CReplyToCommand(client, "%s {default}Couldn't spawn the {unusual}Horseless Headless Horsemann!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 		}
@@ -1310,20 +1333,20 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 	
 	if (!IsValidClient(client))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss, invalid client.");
+		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss, invalid client index.");
 	}
 	
 	g_pos[0] = Float:GetNativeCell(2);
 	g_pos[1] = Float:GetNativeCell(3);
 	g_pos[2] = Float:GetNativeCell(4);
-	new bool:spew = GetNativeCell(5);
-	new Float:scale = Float:GetNativeCell(6);
-	new type = GetNativeCell(7);
-	new bool:bGlow = GetNativeCell(8);
+	new Float:scale = Float:GetNativeCell(5);
+	new bool:bGlow = GetNativeCell(6);
+	new bool:bSpew = GetNativeCell(7);
+	new type = GetNativeCell(8);
 	
 	if (SpawnBoss("eyeball_boss", scale, type, 50.0, "0", bGlow))
 	{
-		if (spew)
+		if (bSpew)
 		{
 			switch (type)
 			{
@@ -1354,17 +1377,17 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 		{
 		case 0:
 			{
-				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
+				if (bSpew) CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'regular', could not spawn Eyeboss 'regular'.");
 			}
 		case 1:
 			{
-				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn {red}RED Spectral MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
+				if (bSpew) CReplyToCommand(client, "%s {default}Couldn't spawn {red}RED Spectral MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'red', could not spawn Eyeboss 'red'.");
 			}
 		case 2:
 			{
-				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn {blue}BLU Spectral MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
+				if (bSpew) CReplyToCommand(client, "%s {default}Couldn't spawn {blue}BLU Spectral MONOCULUS!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'blue', could not spawn Eyeboss 'blue'.");
 			}
 		}
@@ -1382,19 +1405,19 @@ public Native_SpawnMerasmus(Handle:plugin, numParams)
 	
 	if (!IsValidClient(client))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Merasmus, invalid client.");
+		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Merasmus, invalid client index.");
 	}
 	
 	g_pos[0] = Float:GetNativeCell(2);
 	g_pos[1] = Float:GetNativeCell(3);
 	g_pos[2] = Float:GetNativeCell(4);
-	new bool:spew = GetNativeCell(5);
-	new Float:scale = Float:GetNativeCell(6);
-	new bool:bGlow = GetNativeCell(7);
+	new Float:scale = Float:GetNativeCell(5);
+	new bool:bGlow = GetNativeCell(6);
+	new bool:bSpew = GetNativeCell(7);
 	
 	if (SpawnBoss("merasmus", scale, 0, 0.0, "0", bGlow))
 	{
-		if (spew)
+		if (bSpew)
 		{
 			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned {unusual}Merasmus via natives!", client);
 			LogAction(client, -1, "\"%L\" spawned boss via natives: Merasmus", client);
@@ -1403,7 +1426,7 @@ public Native_SpawnMerasmus(Handle:plugin, numParams)
 	}
 	else
 	{
-		if (spew)
+		if (bSpew)
 		{
 			CReplyToCommand(client, "%s {default}Couldn't spawn {unusual}Merasmus!{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 		}
@@ -1422,29 +1445,23 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 	
 	if (!IsValidClient(client))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton, invalid client.");
+		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton, invalid client index.");
 	}
 	
 	g_pos[0] = Float:GetNativeCell(2);
 	g_pos[1] = Float:GetNativeCell(3);
 	g_pos[2] = Float:GetNativeCell(4);
-	new bool:spew = GetNativeCell(5);
-	new Float:scale = Float:GetNativeCell(6);
-	new type = GetNativeCell(7);
-	new bool:bGlow = GetNativeCell(8);
+	new Float:scale = Float:GetNativeCell(5);
+	new bool:bGlow = GetNativeCell(6);
+	new bool:bSpew = GetNativeCell(7);
+	new type = GetNativeCell(8);
 	
 	new String:sSkin[1] = "0";
-	
-	switch (type)
-	{
-	case 1:	Format(sSkin, sizeof(sSkin), "0");
-	case 2:	Format(sSkin, sizeof(sSkin), "1");
-	case 3:	Format(sSkin, sizeof(sSkin), "2");
-	}
+	IntToString(type, sSkin, sizeof(sSkin));
 	
 	if (SpawnBoss("tf_zombie", scale, type, 0.0, sSkin, bGlow))
 	{
-		if (spew)
+		if (bSpew)
 		{
 			switch (type)
 			{
@@ -1475,17 +1492,17 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 		{
 		case 0:
 			{
-				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn the {community}Green Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
+				if (bSpew) CReplyToCommand(client, "%s {default}Couldn't spawn the {community}Green Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'Green', could not spawn Eyeboss 'Green'.");
 			}
 		case 1:
 			{
-				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn the {red}RED Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
+				if (bSpew) CReplyToCommand(client, "%s {default}Couldn't spawn the {red}RED Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'Red', could not spawn Eyeboss 'Red'.");
 			}
 		case 2:
 			{
-				if (spew) CReplyToCommand(client, "%s {default}Couldn't spawn the {blue}BLU Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
+				if (bSpew) CReplyToCommand(client, "%s {default}Couldn't spawn the {blue}BLU Skeleton{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 				ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss 'Blue', could not spawn Eyeboss 'Blue'.");
 			}
 		}
@@ -1503,18 +1520,18 @@ public Native_SpawnSkeletonKing(Handle:plugin, numParams)
 	
 	if (!IsValidClient(client))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton King, invalid client.");
+		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton King, invalid client index.");
 	}
 	
 	g_pos[0] = Float:GetNativeCell(2);
 	g_pos[1] = Float:GetNativeCell(3);
 	g_pos[2] = Float:GetNativeCell(4);
-	new bool:spew = GetNativeCell(5);
 	new bool:bGlow = GetNativeCell(6);
+	new bool:bSpew = GetNativeCell(5);
 	
 	if (SpawnBoss("tf_zombie_spawner", 1.0, 0, 0.0, "-1", bGlow, true))
 	{
-		if (spew)
+		if (bSpew)
 		{
 			CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {unusual}Skeleton King via natives!", client);
 			LogAction(client, -1, "\"%L\" spawned boss via natives: Skeleton King", client);
@@ -1523,7 +1540,7 @@ public Native_SpawnSkeletonKing(Handle:plugin, numParams)
 	}
 	else
 	{
-		if (spew)
+		if (bSpew)
 		{
 			CReplyToCommand(client, "%s {default}Couldn't spawn the {unusual}Skeleton King{default} for some reason via natives.", PLUGIN_TAG_COLORED);
 		}
@@ -1585,45 +1602,48 @@ public OnMapStart()
 {
 	g_healthBar = FindEntityByClassname(-1, "monster_resource");
 	if (g_healthBar == -1)
-	
-	g_healthBar = CreateEntityByName("monster_resource");
-	if (g_healthBar != -1)
 	{
-		DispatchSpawn(g_healthBar);
+		g_healthBar = CreateEntityByName("monster_resource");
+		if (g_healthBar != -1)
+		{
+			DispatchSpawn(g_healthBar);
+		}
 	}
 	
 	PrecacheModel("models/bots/headless_hatman.mdl", true); 
 	PrecacheModel("models/weapons/c_models/c_bigaxe/c_bigaxe.mdl", true);
 	
-	for(new i = 1; i <= 2; i++)
+	decl i;
+	
+	for (i = 1; i <= 2; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_alert0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 4; i++)
+	for (i = 1; i <= 4; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_attack0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 2; i++)
+	for (i = 1; i <= 2; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_death0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 4; i++)
+	for (i = 1; i <= 4; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_laugh0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 3; i++)
+	for (i = 1; i <= 3; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_pain0%d.wav", i);
@@ -1640,21 +1660,21 @@ public OnMapStart()
 	PrecacheModel("models/props_halloween/halloween_demoeye.mdl", true);
 	PrecacheModel("models/props_halloween/eyeball_projectile.mdl", true);
 	
-	for(new i = 1; i <= 3; i++)
+	for (i = 1; i <= 3; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_eyeball/eyeball_laugh0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 3; i++)
+	for (i = 1; i <= 3; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_eyeball/eyeball_mad0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 13; i++)
+	for (i = 1; i <= 13; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_eyeball/eyeball0%d.wav", i);
@@ -1685,7 +1705,7 @@ public OnMapStart()
 	PrecacheModel("models/prop_lakeside_event/bomb_temp.mdl", true);
 	PrecacheModel("models/prop_lakeside_event/bomb_temp_hat.mdl", true);
 	
-	for(new i = 1; i <= 17; i++)
+	for (i = 1; i <= 17; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_appears0%d.wav", i);
@@ -1696,7 +1716,7 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 11; i++)
+	for (i = 1; i <= 11; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_attacks0%d.wav", i);
@@ -1707,7 +1727,7 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 54; i++)
+	for (i = 1; i <= 54; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_headbomb0%d.wav", i);
@@ -1718,7 +1738,7 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 33; i++)
+	for (i = 1; i <= 33; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_held_up0%d.wav", i);
@@ -1729,28 +1749,28 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 2; i <= 4; i++)
+	for (i = 2; i <= 4; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_island0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 3; i++)
+	for (i = 1; i <= 3; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_bcon_skullhat0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 
-	for(new i = 1; i <= 2; i++)
+	for (i = 1; i <= 2; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_combat_idle0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 12; i++)
+	for (i = 1; i <= 12; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_defeated0%d.wav", i);
@@ -1761,19 +1781,22 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 9; i++) {
+	for (i = 1; i <= 9; i++)
+	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_found0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 
-	for(new i = 3; i <= 6; i++) {
+	for (i = 3; i <= 6; i++)
+	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_grenades0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 1; i <= 26; i++) {
+	for (i = 1; i <= 26; i++)
+	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_headbomb_hit0%d.wav", i);
 		else Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_headbomb_hit%d.wav", i);
@@ -1783,7 +1806,7 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 19; i++)
+	for (i = 1; i <= 19; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_heal10%d.wav", i);
@@ -1794,7 +1817,7 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 49; i++)
+	for (i = 1; i <= 49; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_hide_idles0%d.wav", i);
@@ -1805,7 +1828,7 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 16; i++)
+	for (i = 1; i <= 16; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_leaving0%d.wav", i);
@@ -1816,21 +1839,21 @@ public OnMapStart()
 		}
 	}
 	
-	for(new i = 1; i <= 5; i++)
+	for (i = 1; i <= 5; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_pain0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 4; i <= 8; i++)
+	for (i = 4; i <= 8; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_ranged_attack0%d.wav", i);
 		PrecacheSound(iString, true);
 	}
 	
-	for(new i = 2; i <= 13; i++)
+	for (i = 2; i <= 13; i++)
 	{
 		decl String:iString[PLATFORM_MAX_PATH];
 		if (i < 10) Format(iString, sizeof(iString), "vo/halloween_merasmus/sf12_staff_magic0%d.wav", i);
@@ -1858,4 +1881,9 @@ public OnMapStart()
 	
 	PrecacheModel("models/bots/skeleton_sniper/skeleton_sniper.mdl", true);
 	PrecacheModel("models/bots/skeleton_sniper_boss/skeleton_sniper_boss.mdl", true);
+	
+	for (i = 0; i < sizeof(SkeletonKingSpawnSounds); i++)
+	{
+		PrecacheSound(SkeletonKingSpawnSounds[i], true);
+	}
 }
