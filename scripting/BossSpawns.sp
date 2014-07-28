@@ -7,7 +7,7 @@
 #include <autoexecconfig>
 
 #define PLUGIN_NAME	"[TF2] Boss Spawns"
-#define PLUGIN_VERSION "1.0.5"
+#define PLUGIN_VERSION "1.0.5a"
 
 #define PLUGIN_TAG "[BossSpawns]"
 #define PLUGIN_TAG_COLORED "{unusual}[BossSpawns]"
@@ -751,7 +751,7 @@ public Action:Command_SpawnSkeletonKing(client, args)
 	new String:szScale[5] = "0.0";
 	new String:sGlow[5] = "0";
 	
-	new Float:fScale = 1.0;
+	new Float:fScale = -1.0;
 	new bool:bGlow = false;
 	
 	if (args > 0)
@@ -788,7 +788,7 @@ public Action:Command_SpawnSkeletonKing(client, args)
 	
 	if (CheckEntityLimit(client)) return Plugin_Handled;
 	
-	if (SpawnBoss("tf_zombie_spawner", -1.0, 0, 0.0, "0", bGlow ? true : false, true))
+	if (SpawnBoss("tf_zombie_spawner", fScale, 0, 0.0, "0", bGlow ? true : false, true))
 	{
 		CShowActivity(client, "{unusual}[BOSS] ", "{default}%s spawned a {unusual}Skeleton King!", client);
 		LogAction(client, -1, "\"%L\" spawned boss: Skeleton King", client);
@@ -828,7 +828,7 @@ bool:SpawnBoss(const String:sEntityClass[64], Float:scale = -1.0, team = 0, Floa
 		
 		if (SkeletonKing)
 		{
-			SetEntProp(entity, Prop_Send, "m_nSkeletonType", 1);
+			SetEntProp(entity, Prop_Data, "m_nSkeletonType", 1);
 			AcceptEntityInput(entity, "Enable");
 			gSK_Spawner = entity;
 			gSK_IsSpawning = true;
