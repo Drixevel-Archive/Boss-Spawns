@@ -84,6 +84,21 @@ native bool:TF2_SpawnSkeleton(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.
  */
 native bool:TF2_SpawnSkeletonKing(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.0, bool:glow = false, bool:spew = true);
 
+/**
+ * Spawns the Ghost on the map.
+ *
+ * @param client		Client spawning the boss. (0 = Console)
+ * @param X				Float value for X parameter of spawn location.
+ * @param Y				Float value for Y parameter of spawn location.
+ * @param Z				Float value for Z parameter of spawn location.
+ * @param glow			True if boss should glow, false if not.
+ * @param spew		True if to log, reply & show activity, false otherwise.
+ *
+ * @return				True if spawned successfully, false otherwise.
+ * @error				Invalid client or fields.
+ */
+native bool:TF2_SpawnGhost(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.0, bool:glow = false, bool:spew = true);
+
 public SharedPlugin:__pl_boss_spawns = 
 {
 	name = "BossSpawns",
@@ -103,5 +118,6 @@ public __pl_boss_spawns_SetNTVOptional()
 	MarkNativeAsOptional("TF2_SpawnMerasmus");
 	MarkNativeAsOptional("TF2_SpawnSkeleton");
 	MarkNativeAsOptional("TF2_SpawnSkeletonKing");
+	MarkNativeAsOptional("TF2_SpawnGhost");
 }
 #endif

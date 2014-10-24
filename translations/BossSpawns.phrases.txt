@@ -1,0 +1,48 @@
+"Phrases"
+{
+	//Console Strings
+	"console initializing"
+	{
+		"en"	"Boss Spawns is initializing..."
+	}
+	
+	"console initialized"
+	{
+		"en"	"Boss Spawns has been fully initialized."
+	}
+	
+	"console hitbox status"
+	{
+		"#format"	"{1:s}"	//On/Off Status
+		"en"	"Hitbox Scaling: {1}"
+	}
+	
+	//Reply Strings
+	"reply invalid size specified"
+	{
+		"en"	"Size must be more than 0.0."
+	}
+	
+	"reply invalid size out of bounds"
+	{
+		"#format"	"{1:s}, {2:s}"	//Minimum/Maximum Convars
+		"en"	"Size must be between {1} and {2}."
+	}
+	
+	"reply invalid spawn point"
+	{
+		"en"	"Invalid spawn point, please make sure you're looking at a flat surface."
+	}
+	
+	"spawned boss prefix message"
+	{
+		"#format"	"{1:s}"	//Boss Name
+		"en"	"{default}Spawned Boss: {1}"
+	}
+	
+	"spawned boss prefix reply"
+	{
+		"#format"	"{1:s}"	//Boss Name
+		"en"	"{default}You have spawned a {1}."
+	}
+}
