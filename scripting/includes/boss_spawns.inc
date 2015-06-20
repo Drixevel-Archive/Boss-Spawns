@@ -10,9 +10,9 @@
  * @param X				Float value for X parameter of spawn location.
  * @param Y				Float value for Y parameter of spawn location.
  * @param Z				Float value for Z parameter of spawn location.
- * @param scale		Float value for the scale of the boss.
+ * @param scale			Float value for the scale of the boss.
  * @param glow			True if boss should glow, false if not.
- * @param spew		True if to log, reply & show activity, false otherwise.
+ * @param spew			True if to log, reply & show activity, false otherwise.
  *
  * @return				True if spawned successfully, false otherwise.
  * @error				Invalid client or fields.
@@ -26,9 +26,9 @@ native bool:TF2_SpawnHatman(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.0,
  * @param X				Float value for X parameter of spawn location.
  * @param Y				Float value for Y parameter of spawn location.
  * @param Z				Float value for Z parameter of spawn location.
- * @param scale		Float value for the scale of the boss.
+ * @param scale			Float value for the scale of the boss.
  * @param glow			True if boss should glow, false if not.
- * @param spew		True if to log, reply & show activity, false otherwise.
+ * @param spew			True if to log, reply & show activity, false otherwise.
  * @param type			Type of Eyeboss: (0 = Normal, 1 = Red, 2 = Blue)
  *
  * @return				True if spawned successfully, false otherwise.
@@ -43,9 +43,9 @@ native bool:TF2_SpawnEyeboss(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.0
  * @param X				Float value for X parameter of spawn location.
  * @param Y				Float value for Y parameter of spawn location.
  * @param Z				Float value for Z parameter of spawn location.
- * @param scale		Float value for the scale of the boss.
+ * @param scale			Float value for the scale of the boss.
  * @param glow			True if boss should glow, false if not.
- * @param spew		True if to log, reply & show activity, false otherwise.
+ * @param spew			True if to log, reply & show activity, false otherwise.
  *
  * @return				True if spawned successfully, false otherwise.
  * @error				Invalid client or fields.
@@ -59,9 +59,9 @@ native bool:TF2_SpawnMerasmus(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.
  * @param X				Float value for X parameter of spawn location.
  * @param Y				Float value for Y parameter of spawn location.
  * @param Z				Float value for Z parameter of spawn location.
- * @param scale		Float value for the scale of the boss.
+ * @param scale			Float value for the scale of the boss.
  * @param glow			True if boss should glow, false if not.
- * @param spew		True if to log, reply & show activity, false otherwise.
+ * @param spew			True if to log, reply & show activity, false otherwise.
  * @param type			Type of Skeleton: (0 = Green, 1 = Red, 2 = Blue)
  *
  * @return				True if spawned successfully, false otherwise.
@@ -77,7 +77,7 @@ native bool:TF2_SpawnSkeleton(client, Float:X = 0.0, Float:Y = 0.0, Float:Z = 0.
  * @param Y				Float value for Y parameter of spawn location.
  * @param Z				Float value for Z parameter of spawn location.
  * @param glow			True if boss should glow, false if not.
- * @param spew		True if to log, reply & show activity, false otherwise.
+ * @param spew			True if to log, reply & show activity, false otherwise.
  *
  * @return				True if spawned successfully, false otherwise.
  * @error				Invalid client or fields.
@@ -92,7 +92,7 @@ native bool:TF2_SpawnSkeletonKing(client, Float:X = 0.0, Float:Y = 0.0, Float:Z 
  * @param Y				Float value for Y parameter of spawn location.
  * @param Z				Float value for Z parameter of spawn location.
  * @param glow			True if boss should glow, false if not.
- * @param spew		True if to log, reply & show activity, false otherwise.
+ * @param spew			True if to log, reply & show activity, false otherwise.
  *
  * @return				True if spawned successfully, false otherwise.
  * @error				Invalid client or fields.
