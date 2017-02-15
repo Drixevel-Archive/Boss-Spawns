@@ -25,7 +25,7 @@
 	
 	"reply invalid size out of bounds"
 	{
-		"#format"	"{1:s}, {2:s}"	//Minimum/Maximum Convars
+		"#format"	"{1:s},{2:s}"	//Minimum/Maximum Convars
 		"en"	"Size must be between {1} and {2}."
 	}
 	
