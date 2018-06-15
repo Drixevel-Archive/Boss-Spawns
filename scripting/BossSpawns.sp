@@ -7,6 +7,7 @@
 #include <morecolors>
 #include <autoexecconfig>
 #include <boss_spawns>
+//#pragma newdecls required
 
 #define PLUGIN_NAME	"[TF2] Boss Spawns"
 #define PLUGIN_VERSION "1.1.0"
@@ -14,12 +15,12 @@
 
 #define MAX_ENTITY_LIMIT 4096
 
-Handle g_hConVars[7];
+ConVar g_hConVars[7];
 char g_sPluginTag[256];
 
-Float g_fPositionCache[3];
-Float g_fBoundMin;
-Float g_fBoundMax;
+float g_fPositionCache[3];
+float g_fBoundMin;
+float g_fBoundMax;
 
 char g_sBoundMin[32];
 char g_sBoundMax[32];
@@ -143,10 +144,10 @@ char g_sGhostEffectSounds[5][PLATFORM_MAX_PATH] =
 public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
-	author = "abrandnewday, reworked by Keith Warren (Drixevel)",
+	author = "404, Keith Warren (Shaders Allen)",
 	description = "Simple plugin to allow server operators to spawn bosses.",
 	version = PLUGIN_VERSION,
-	url = "http://www.drixevel.com/"
+	url = "http://www.shadersallen.com/"
 }
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
@@ -173,17 +174,17 @@ public void OnPluginStart()
 	LoadTranslations("common.phrases");
 	LoadTranslations("BossSpawns.phrases");
 
-	g_hConVars[0] = CreateConVar("sm_bossspawns_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
-	g_hConVars[1] = CreateConVar("sm_bossspawns_status", "1", "Status of the plugin: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-	g_hConVars[2] = CreateConVar("sm_bossspawns_hitboxes", "1", "Enable hitbox scaling on spawned bosses: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-	g_hConVars[3] = CreateConVar("sm_bossspawns_bounds", "0.1, 5.0", "Lower (optional) and upper bounds for resizing, separated with a comma.", FCVAR_PLUGIN);
-	g_hConVars[4] = CreateConVar("sm_bossspawns_spawnsounds", "1", "Enable spawn sounds for bosses: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-	g_hConVars[5] = CreateConVar("sm_bossspawns_chattag", "{gold}[BossSpawns]", "Tag for plugin to use: (Uses color tags, max 64 characters)");
-	g_hConVars[6] = CreateConVar("sm_bossspawns_verbose", "1", "Enable spawn verbose messages: (1 = on, 0 = off)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_hConVars[0] = CreateConVar("sm_bossspawns_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_SPONLY|FCVAR_DONTRECORD);
+	g_hConVars[1] = CreateConVar("sm_bossspawns_status", "1", "Status of the plugin: (1 = on, 0 = off)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hConVars[2] = CreateConVar("sm_bossspawns_hitboxes", "1", "Enable hitbox scaling on spawned bosses: (1 = on, 0 = off)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hConVars[3] = CreateConVar("sm_bossspawns_bounds", "0.1, 5.0", "Lower (optional) and upper bounds for resizing, separated with a comma.", FCVAR_NOTIFY);
+	g_hConVars[4] = CreateConVar("sm_bossspawns_spawnsounds", "1", "Enable spawn sounds for bosses: (1 = on, 0 = off)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hConVars[5] = CreateConVar("sm_bossspawns_chattag", "{gold}[BossSpawns]", "Tag for plugin to use: (Uses color tags, max 64 characters)", FCVAR_NOTIFY);
+	g_hConVars[6] = CreateConVar("sm_bossspawns_verbose", "1", "Enable spawn verbose messages: (1 = on, 0 = off)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	AutoExecConfig();
 
-	for (new i = 0; i < sizeof(g_hConVars); i++)
+	for (int i = 0; i < sizeof(g_hConVars); i++)
 	{
 		HookConVarChange(g_hConVars[i], HandleCvars);
 	}
@@ -225,19 +226,19 @@ public void OnConfigsExecuted()
 	}
 }
 
-public HandleCvars(Handle:cvar, const String:oldValue[], const String:newValue[])
+public void HandleCvars(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	new iNewValue = StringToInt(newValue);
+	//int iNewValue = StringToInt(newValue);
 
-	if (cvar == g_hConVars[0])
+	if (convar == g_hConVars[0])
 	{
-		Setg_hConVarstring(g_hConVars[0], PLUGIN_VERSION);
+		SetConVarString(g_hConVars[0], PLUGIN_VERSION);
 	}
-	else if (cvar == g_hConVars[3])
+	else if (convar == g_hConVars[3])
 	{
 		ParseConVarToLimits(g_hConVars[3], g_sBoundMin, sizeof(g_sBoundMin), g_fBoundMin, g_sBoundMax, sizeof(g_sBoundMax), g_fBoundMax);
 	}
-	else if (cvar == g_hConVars[5])
+	else if (convar == g_hConVars[5])
 	{
 		strcopy(g_sPluginTag, sizeof(g_sPluginTag), newValue);
 	}
@@ -245,35 +246,39 @@ public HandleCvars(Handle:cvar, const String:oldValue[], const String:newValue[]
 
 public void OnPluginEnd()
 {
-	new entity;
+	int entity = -1;
 
-	while ((entity = FindEntityByClassname(entity, "headless_hatman")) != !IsValidEntity(entity))
+	while ((entity = FindEntityByClassname(entity, "headless_hatman")) != -1)
 	{
 		Handle hEvent = CreateEvent("pumpkin_lord_killed", true);
 		FireEvent(hEvent);
 		AcceptEntityInput(entity, "Kill");
 	}
-
-	while ((entity = FindEntityByClassname(entity, "eyeball_boss")) != !IsValidEntity(entity))
+	
+	entity = -1;
+	while ((entity = FindEntityByClassname(entity, "eyeball_boss")) != -1)
 	{
 		Handle hEvent = CreateEvent("eyeball_boss_killed", true);
 		FireEvent(hEvent);
 		AcceptEntityInput(entity, "Kill");
 	}
-
-	while ((entity = FindEntityByClassname(entity, "merasmus")) != !IsValidEntity(entity))
+	
+	entity = -1;
+	while ((entity = FindEntityByClassname(entity, "merasmus")) != -1)
 	{
 		Handle hEvent = CreateEvent("merasmus_killed", true);
 		FireEvent(hEvent);
 		AcceptEntityInput(entity, "Kill");
 	}
-
-	while ((entity = FindEntityByClassname(entity, "tf_zombie")) != !IsValidEntity(entity)) //Kills Skeleton King as well.
+	
+	entity = -1;
+	while ((entity = FindEntityByClassname(entity, "tf_zombie")) != -1) //Kills Skeleton King as well.
 	{
 		AcceptEntityInput(entity, "Kill");
 	}
-
-	while ((entity = FindEntityByClassname(entity, "simple_bot")) != !IsValidEntity(entity))
+	
+	entity = -1;
+	while ((entity = FindEntityByClassname(entity, "simple_bot")) != -1)
 	{
 		char sName[32];
 		GetEntPropString(entity, Prop_Data, "m_iName", sName, sizeof(sName));
@@ -285,7 +290,7 @@ public void OnPluginEnd()
 	}
 }
 
-void ParseConVarToLimits(Handle hConVar, char[] sMinString, int iMinLength, Float& fMin, char[] sMaxString, int iMaxLength, Float& fMax)
+void ParseConVarToLimits(Handle hConVar, char[] sMinString, int iMinLength, float& fMin, char[] sMaxString, int iMaxLength, float& fMax)
 {
 	int iSplitResult;
 
@@ -304,8 +309,8 @@ void ParseConVarToLimits(Handle hConVar, char[] sMinString, int iMinLength, Floa
 		strcopy(sMaxString, iMaxLength, szBounds);
 	}
 
-	TrimString(szMaxString);
-	fMax = StringToFloat(szMaxString);
+	TrimString(sMinString);
+	fMax = StringToFloat(sMinString);
 
 	int iMarkInMin = FindCharInString(sMinString, '.'), iMarkInMax = FindCharInString(sMaxString, '.');
 	Format(sMinString, iMinLength, "%s%s%s", (iMarkInMin == 0 ? "0" : ""), sMinString, (iMarkInMin == -1 ? ".0" : (iMarkInMin == (strlen(sMinString) - 1) ? "0" : "")));
@@ -313,7 +318,7 @@ void ParseConVarToLimits(Handle hConVar, char[] sMinString, int iMinLength, Floa
 
 	if (fMin > fMax)
 	{
-		Float fTemp = fMax;
+		float fTemp = fMax;
 		fMax = fMin;
 		fMin = fTemp;
 	}
@@ -322,7 +327,7 @@ void ParseConVarToLimits(Handle hConVar, char[] sMinString, int iMinLength, Floa
 /***************************************************/
 //Spawn Commands
 
-public Action:Command_SpawnHatman(client, args)
+public Action Command_SpawnHatman(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -335,11 +340,11 @@ public Action:Command_SpawnHatman(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = 1.0;
-	new bool:bGlow = false;
+	float fScale = 1.0;
+	bool bGlow;
 
 	if (args > 0)
 	{
@@ -390,7 +395,7 @@ public Action:Command_SpawnHatman(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnEyeBoss(client, args)
+public Action Command_SpawnEyeBoss(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -403,11 +408,11 @@ public Action:Command_SpawnEyeBoss(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = 1.0;
-	new bool:bGlow = false;
+	float fScale = 1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -458,7 +463,7 @@ public Action:Command_SpawnEyeBoss(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnEyeBossRED(client, args)
+public Action Command_SpawnEyeBossRED(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -471,11 +476,11 @@ public Action:Command_SpawnEyeBossRED(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = 1.0;
-	new bool:bGlow = false;
+	float fScale = 1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -526,7 +531,7 @@ public Action:Command_SpawnEyeBossRED(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnEyeBossBLU(client, args)
+public Action Command_SpawnEyeBossBLU(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -539,11 +544,11 @@ public Action:Command_SpawnEyeBossBLU(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = 1.0;
-	new bool:bGlow = false;
+	float fScale = 1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -594,7 +599,7 @@ public Action:Command_SpawnEyeBossBLU(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnMerasmus(client, args)
+public Action Command_SpawnMerasmus(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -607,11 +612,11 @@ public Action:Command_SpawnMerasmus(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = 1.0;
-	new bool:bGlow = false;
+	float fScale = 1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -662,7 +667,7 @@ public Action:Command_SpawnMerasmus(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnGreenSkeleton(client, args)
+public Action Command_SpawnGreenSkeleton(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -675,11 +680,11 @@ public Action:Command_SpawnGreenSkeleton(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = -1.0;
-	new bool:bGlow = false;
+	float fScale = -1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -730,7 +735,7 @@ public Action:Command_SpawnGreenSkeleton(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnREDSkeleton(client, args)
+public Action Command_SpawnREDSkeleton(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -743,11 +748,11 @@ public Action:Command_SpawnREDSkeleton(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = -1.0;
-	new bool:bGlow = false;
+	float fScale = -1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -798,7 +803,7 @@ public Action:Command_SpawnREDSkeleton(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnBLUSkeleton(client, args)
+public Action Command_SpawnBLUSkeleton(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -811,11 +816,11 @@ public Action:Command_SpawnBLUSkeleton(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = -1.0;
-	new bool:bGlow = false;
+	float fScale = -1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -866,7 +871,7 @@ public Action:Command_SpawnBLUSkeleton(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnSkeletonKing(client, args)
+public Action Command_SpawnSkeletonKing(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -879,11 +884,11 @@ public Action:Command_SpawnSkeletonKing(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = -1.0;
-	new bool:bGlow = false;
+	float fScale = -1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -939,7 +944,7 @@ public Action:Command_SpawnSkeletonKing(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SpawnGhost(client, args)
+public Action Command_SpawnGhost(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -952,11 +957,11 @@ public Action:Command_SpawnGhost(client, args)
 		return Plugin_Handled;
 	}
 
-	new String:szScale[5] = "0.0";
-	new String:sGlow[5] = "0";
+	char szScale[5] = "0.0";
+	char sGlow[5] = "0";
 
-	new Float:fScale = -1.0;
-	new bool:bGlow = false;
+	float fScale = -1.0;
+	bool bGlow = false;
 
 	if (args > 0)
 	{
@@ -1007,7 +1012,7 @@ public Action:Command_SpawnGhost(client, args)
 	return Plugin_Handled;
 }
 
-ProcessActivity(client, const String:sBossName[])
+void ProcessActivity(int client, const char[] sBossName)
 {
 	if (GetConVarBool(g_hConVars[6]))
 	{
@@ -1021,9 +1026,9 @@ ProcessActivity(client, const String:sBossName[])
 /***************************************************/
 //Spawn Function
 
-bool:SpawnBoss(const String:sEntityClass[], const String:sEntityName[], Float:scale = -1.0, team = 0, Float:offset = 0.0, String:skin[1] = "-1", bool:glow = false, bool:SkeletonKing = false, bool:Ghost = false)
+bool SpawnBoss(const char[] sEntityClass, const char[] sEntityName, float scale = -1.0, int team = 0, float offset = 0.0, char skin[1] = "-1", bool glow = false, bool SkeletonKing = false, bool Ghost = false)
 {
-	new entity = CreateEntityByName(sEntityClass);
+	int entity = CreateEntityByName(sEntityClass);
 
 	if (IsValidEntity(entity))
 	{
@@ -1118,7 +1123,7 @@ public GhostThink(entity)
 		return;
 	}
 
-	static Float:flLastCall;
+	float flLastCall;
 	if (GetEngineTime() - 0.1 <= flLastCall)
 	{
 		return;
@@ -1128,7 +1133,7 @@ public GhostThink(entity)
 
 	if (IsValidEntity(entity) && !g_bInvisible[entity])
 	{
-		new Float:vecGhostOrigin[3];
+		float vecGhostOrigin[3];
 		GetEntPropVector(entity, Prop_Send, "m_vecOrigin", vecGhostOrigin);
 
 		for (new i = 1; i <= MaxClients; i++)
@@ -1138,10 +1143,10 @@ public GhostThink(entity)
 				continue;
 			}
 
-			new Float:vecClientOrigin[3];
+			float vecClientOrigin[3];
 			GetClientAbsOrigin(i, vecClientOrigin);
 
-			new Float:flDistance = GetVectorDistance(vecGhostOrigin, vecClientOrigin);
+			float flDistance = GetVectorDistance(vecGhostOrigin, vecClientOrigin);
 
 			if (flDistance < 0)
 			{
@@ -1156,13 +1161,13 @@ public GhostThink(entity)
 	}
 }
 
-public Action:Timer_ToggleInvis(Handle:timer, any:data)
+public Action Timer_ToggleInvis(Handle:timer, any:data)
 {
 	new entity = EntRefToEntIndex(data);
 
 	if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
 	{
-		new String:sClass[32];
+		char sClass[32];
 		GetEntityClassname(entity, sClass, sizeof(sClass));
 
 		if (StrEqual(sClass, "simple_bot"))
@@ -1197,7 +1202,7 @@ public Action:Timer_ToggleInvis(Handle:timer, any:data)
 	}
 }
 
-AttachParticle(iEntity, const String:strParticleEffect[], const String:strAttachPoint[] = "", Float:flZOffset = 0.0, Float:flSelfDestruct = 0.0)
+int AttachParticle(int iEntity, const char[] strParticleEffect, const char[] strAttachPoint = "", float flZOffset = 0.0, float flSelfDestruct = 0.0)
 {
 	if (!g_bMapStarted)
 	{
@@ -1211,7 +1216,7 @@ AttachParticle(iEntity, const String:strParticleEffect[], const String:strAttach
 		return 0;
 	}
 
-	new Float:flPos[3];
+	float flPos[3];
 	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", flPos);
 	flPos[2] += flZOffset;
 
@@ -1241,7 +1246,7 @@ AttachParticle(iEntity, const String:strParticleEffect[], const String:strAttach
 	return iParticle;
 }
 
-public Action:Timer_DeleteParticle(Handle:timer, any:data)
+public Action Timer_DeleteParticle(Handle:timer, any:data)
 {
 	new iEntity = EntRefToEntIndex(data);
 
@@ -1253,8 +1258,8 @@ public Action:Timer_DeleteParticle(Handle:timer, any:data)
 
 ScarePlayer(entity, client)
 {
-	static Float:flLastScare[MAXPLAYERS+1];
-	static Float:flLastBoo;
+	float flLastScare[MAXPLAYERS+1];
+	float flLastBoo;
 
 	if (!IsValidEntity(entity) || !IsValidClient(client))
 	{
@@ -1277,7 +1282,7 @@ ScarePlayer(entity, client)
 	CreateTimer(0.5, Timer_StunPlayer, GetClientUserId(client));
 }
 
-public Action:Timer_StunPlayer(Handle:hTimer, any:data)
+public Action Timer_StunPlayer(Handle:hTimer, any:data)
 {
 	new client = GetClientOfUserId(data);
 
@@ -1290,7 +1295,7 @@ public Action:Timer_StunPlayer(Handle:hTimer, any:data)
 /***************************************************/
 //Slay Commands
 
-public Action:Command_SlayHatman(client, args)
+public Action Command_SlayHatman(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1317,7 +1322,7 @@ public Action:Command_SlayHatman(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayEyeBoss(client, args)
+public Action Command_SlayEyeBoss(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1348,7 +1353,7 @@ public Action:Command_SlayEyeBoss(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayEyeBossRED(client, args)
+public Action Command_SlayEyeBossRED(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1379,7 +1384,7 @@ public Action:Command_SlayEyeBossRED(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayEyeBossBLU(client, args)
+public Action Command_SlayEyeBossBLU(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1410,7 +1415,7 @@ public Action:Command_SlayEyeBossBLU(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayMerasmus(client, args)
+public Action Command_SlayMerasmus(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1437,7 +1442,7 @@ public Action:Command_SlayMerasmus(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayGreenSkeleton(client, args)
+public Action Command_SlayGreenSkeleton(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1466,7 +1471,7 @@ public Action:Command_SlayGreenSkeleton(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayREDSkeleton(client, args)
+public Action Command_SlayREDSkeleton(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1495,7 +1500,7 @@ public Action:Command_SlayREDSkeleton(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayBLUSkeleton(client, args)
+public Action Command_SlayBLUSkeleton(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1524,7 +1529,7 @@ public Action:Command_SlayBLUSkeleton(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlaySkeletonKing(client, args)
+public Action Command_SlaySkeletonKing(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1540,7 +1545,7 @@ public Action:Command_SlaySkeletonKing(client, args)
 			return Plugin_Handled;
 		}
 
-		new String:sBuffer[32];
+		char sBuffer[32];
 		GetEntPropString(entity, Prop_Data, "m_iName", sBuffer, sizeof(sBuffer));
 
 		if (StrEqual(sBuffer, "SkeletonKing"))
@@ -1555,7 +1560,7 @@ public Action:Command_SlaySkeletonKing(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_SlayGhost(client, args)
+public Action Command_SlayGhost(int client, int args)
 {
 	if (!GetConVarBool(g_hConVars[1]))
 	{
@@ -1571,7 +1576,7 @@ public Action:Command_SlayGhost(client, args)
 			return Plugin_Handled;
 		}
 
-		new String:sBuffer[32];
+		char sBuffer[32];
 		GetEntPropString(entity, Prop_Data, "m_iName", sBuffer, sizeof(sBuffer));
 
 		if (StrEqual(sBuffer, "SpawnedGhost"))
@@ -1590,11 +1595,11 @@ public Action:Command_SlayGhost(client, args)
 
 SetTeleportEndPoint(client)
 {
-	new Float:vAngles[3];
-	new Float:vOrigin[3];
-	new Float:vBuffer[3];
-	new Float:vStart[3];
-	new Float:Distance;
+	float vAngles[3];
+	float vOrigin[3];
+	float vBuffer[3];
+	float vStart[3];
+	float Distance;
 
 	GetClientEyePosition(client,vOrigin);
 	GetClientEyeAngles(client, vAngles);
@@ -1728,25 +1733,25 @@ public OnEntityDestroyed(entity)
 	}
 }
 
-public OnHorsemannDamaged(victim, attacker, inflictor, Float:damage, damagetype)
+public void OnHorsemannDamaged(int victim, int attacker, int inflictor, float damage, int damagetype)
 {
 	UpdateBossHealth(victim);
 	UpdateDeathEvent(victim);
 }
 
-public OnMonoculusDamaged(victim, attacker, inflictor, Float:damage, damagetype)
+public void OnMonoculusDamaged(int victim, int attacker, int inflictor, float damage, int damagetype)
 {
 	UpdateBossHealth(victim);
 	UpdateDeathEvent(victim);
 }
 
-public OnMerasmusDamaged(victim, attacker, inflictor, Float:damage, damagetype)
+public void OnMerasmusDamaged(int victim, int attacker, int inflictor, float damage, int damagetype)
 {
 	UpdateBossHealth(victim);
 	UpdateDeathEvent(victim);
 }
 
-public OnSkeletonKingDamaged(victim, attacker, inflictor, Float:damage, damagetype)
+public void OnSkeletonKingDamaged(int victim, int attacker, int inflictor, float damage, int damagetype)
 {
 	UpdateBossHealth(victim);
 	UpdateDeathEvent(victim);
@@ -1810,12 +1815,12 @@ public Native_SpawnHatman(Handle:plugin, numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Hatman, invalid client index.");
 	}
 
-	g_fPositionCache[0] = Float:GetNativeCell(2);
-	g_fPositionCache[1] = Float:GetNativeCell(3);
-	g_fPositionCache[2] = Float:GetNativeCell(4);
-	new Float:scale = Float:GetNativeCell(5);
-	new bool:bGlow = GetNativeCell(6);
-	new bool:bSpew = GetNativeCell(7);
+	g_fPositionCache[0] = GetNativeCell(2);
+	g_fPositionCache[1] = GetNativeCell(3);
+	g_fPositionCache[2] = GetNativeCell(4);
+	float scale = GetNativeCell(5);
+	bool bGlow = GetNativeCell(6);
+	bool bSpew = GetNativeCell(7);
 
 	if (SpawnBoss("headless_hatman", "", scale, 0, 10.0, "0", bGlow))
 	{
@@ -1850,12 +1855,12 @@ public Native_SpawnEyeboss(Handle:plugin, numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Eyeboss, invalid client index.");
 	}
 
-	g_fPositionCache[0] = Float:GetNativeCell(2);
-	g_fPositionCache[1] = Float:GetNativeCell(3);
-	g_fPositionCache[2] = Float:GetNativeCell(4);
-	new Float:scale = Float:GetNativeCell(5);
-	new bool:bGlow = GetNativeCell(6);
-	new bool:bSpew = GetNativeCell(7);
+	g_fPositionCache[0] = GetNativeCell(2);
+	g_fPositionCache[1] = GetNativeCell(3);
+	g_fPositionCache[2] = GetNativeCell(4);
+	float scale = GetNativeCell(5);
+	bool bGlow = GetNativeCell(6);
+	bool bSpew = GetNativeCell(7);
 	new type = GetNativeCell(8);
 
 	if (SpawnBoss("eyeball_boss", "", scale, type, 50.0, "0", bGlow))
@@ -1922,12 +1927,12 @@ public Native_SpawnMerasmus(Handle:plugin, numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Merasmus, invalid client index.");
 	}
 
-	g_fPositionCache[0] = Float:GetNativeCell(2);
-	g_fPositionCache[1] = Float:GetNativeCell(3);
-	g_fPositionCache[2] = Float:GetNativeCell(4);
-	new Float:scale = Float:GetNativeCell(5);
-	new bool:bGlow = GetNativeCell(6);
-	new bool:bSpew = GetNativeCell(7);
+	g_fPositionCache[0] = GetNativeCell(2);
+	g_fPositionCache[1] = GetNativeCell(3);
+	g_fPositionCache[2] = GetNativeCell(4);
+	float scale = GetNativeCell(5);
+	bool bGlow = GetNativeCell(6);
+	bool bSpew = GetNativeCell(7);
 
 	if (SpawnBoss("merasmus", "", scale, 0, 0.0, "0", bGlow))
 	{
@@ -1962,15 +1967,15 @@ public Native_SpawnSkeleton(Handle:plugin, numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton, invalid client index.");
 	}
 
-	g_fPositionCache[0] = Float:GetNativeCell(2);
-	g_fPositionCache[1] = Float:GetNativeCell(3);
-	g_fPositionCache[2] = Float:GetNativeCell(4);
-	new Float:scale = Float:GetNativeCell(5);
-	new bool:bGlow = GetNativeCell(6);
-	new bool:bSpew = GetNativeCell(7);
+	g_fPositionCache[0] = GetNativeCell(2);
+	g_fPositionCache[1] = GetNativeCell(3);
+	g_fPositionCache[2] = GetNativeCell(4);
+	float scale = GetNativeCell(5);
+	bool bGlow = GetNativeCell(6);
+	bool bSpew = GetNativeCell(7);
 	new type = GetNativeCell(8);
 
-	new String:sSkin[1] = "0";
+	char sSkin[1] = "0";
 	IntToString(type, sSkin, sizeof(sSkin));
 
 	if (SpawnBoss("tf_zombie", "", scale, type, 0.0, sSkin, bGlow))
@@ -2037,11 +2042,11 @@ public Native_SpawnSkeletonKing(Handle:plugin, numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Skeleton King, invalid client index.");
 	}
 
-	g_fPositionCache[0] = Float:GetNativeCell(2);
-	g_fPositionCache[1] = Float:GetNativeCell(3);
-	g_fPositionCache[2] = Float:GetNativeCell(4);
-	new bool:bGlow = GetNativeCell(6);
-	new bool:bSpew = GetNativeCell(5);
+	g_fPositionCache[0] = GetNativeCell(2);
+	g_fPositionCache[1] = GetNativeCell(3);
+	g_fPositionCache[2] = GetNativeCell(4);
+	bool bGlow = GetNativeCell(6);
+	bool bSpew = GetNativeCell(5);
 
 	if (SpawnBoss("tf_zombie_spawner", "", 1.0, 0, 0.0, "-1", bGlow, true))
 	{
@@ -2076,11 +2081,11 @@ public Native_SpawnGhost(Handle:plugin, numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error spawning Ghost, invalid client index.");
 	}
 
-	g_fPositionCache[0] = Float:GetNativeCell(2);
-	g_fPositionCache[1] = Float:GetNativeCell(3);
-	g_fPositionCache[2] = Float:GetNativeCell(4);
-	new bool:bGlow = GetNativeCell(6);
-	new bool:bSpew = GetNativeCell(5);
+	g_fPositionCache[0] = GetNativeCell(2);
+	g_fPositionCache[1] = GetNativeCell(3);
+	g_fPositionCache[2] = GetNativeCell(4);
+	bool bGlow = GetNativeCell(6);
+	bool bSpew = GetNativeCell(5);
 
 	if (SpawnBoss("simple_bot", "SpawnedGhost", 1.0, 0, 0.0, "-1", bGlow, false, true))
 	{
@@ -2103,14 +2108,14 @@ public Native_SpawnGhost(Handle:plugin, numParams)
 
 /***************************************************/
 
-bool:IsValidClient(i, bool:replay = true)
+bool IsValidClient(int i, bool replay = true)
 {
 	if (i <= 0 || i > MaxClients || !IsClientInGame(i) || GetEntProp(i, Prop_Send, "m_bIsCoaching")) return false;
 	if (replay && (IsClientSourceTV(i) || IsClientReplay(i))) return false;
 	return true;
 }
 
-bool:CheckEntityLimit(client)
+bool CheckEntityLimit(int client)
 {
 	if (GetEntityCount() >= GetMaxEntities() - 32)
 	{
@@ -2121,9 +2126,9 @@ bool:CheckEntityLimit(client)
 	return false;
 }
 
-ResizeHitbox(entity, const String:sEntityClass[], Float:fScale = 1.0)
+void ResizeHitbox(int entity, const char[] sEntityClass, float fScale = 1.0)
 {
-	new Float:vecBossMin[3], Float:vecBossMax[3];
+	float vecBossMin[3], vecBossMax[3];
 	if (StrEqual(sEntityClass, "headless_hatman"))
 	{
 		vecBossMin[0] = -25.5, vecBossMin[1] = -38.5, vecBossMin[2] = -11.0;
@@ -2140,7 +2145,7 @@ ResizeHitbox(entity, const String:sEntityClass[], Float:fScale = 1.0)
 		vecBossMax[0] = 92.5, vecBossMax[1] = 49.5, vecBossMax[2] = 190.5;
 	}
 
-	new Float:vecScaledBossMin[3], Float:vecScaledBossMax[3];
+	float vecScaledBossMin[3], vecScaledBossMax[3];
 
 	vecScaledBossMin = vecBossMin;
 	vecScaledBossMax = vecBossMax;
@@ -2195,7 +2200,7 @@ public OnMapStart()
 
 	for (i = 1; i <= 4; i++)
 	{
-		new String:iString[PLATFORM_MAX_PATH];
+		char iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_attack0%d.mp3", i);
 		PrecacheSound(iString, true);
 	}
@@ -2208,7 +2213,7 @@ public OnMapStart()
 
 	for (i = 1; i <= 4; i++)
 	{
-		new String:iString[PLATFORM_MAX_PATH];
+		char iString[PLATFORM_MAX_PATH];
 		Format(iString, sizeof(iString), "vo/halloween_boss/knight_laugh0%d.mp3", i);
 		PrecacheSound(iString, true);
 	}
