@@ -144,10 +144,10 @@ char g_sGhostEffectSounds[5][PLATFORM_MAX_PATH] =
 public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
-	author = "404, Keith Warren (Shaders Allen)",
+	author = "Drixevel",
 	description = "Simple plugin to allow server operators to spawn bosses.",
 	version = PLUGIN_VERSION,
-	url = "http://www.shadersallen.com/"
+	url = "http://drixevel.dev/"
 }
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
