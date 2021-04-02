@@ -1,10 +1,10 @@
 "Phrases"
 {
-	//Console Strings
+	// Console Strings
 	"console initializing"
 	{
 		"en"	"Boss Spawns is initializing..."
-		"pt"	"Carregando plugin: Boss Spawns"
+		"pt"	"O plugin Boss Spawns está sendo carregado..."
 	}
 	
 	"console initialized"
