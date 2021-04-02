@@ -1,6 +1,6 @@
 "Phrases"
 {
-	// Console Strings
+	//Console Strings
 	"console initializing"
 	{
 		"en"	"Boss Spawns is initializing..."
