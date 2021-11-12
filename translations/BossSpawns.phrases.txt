@@ -37,7 +37,7 @@
 	"reply invalid spawn point"
 	{
 		"en"	"Invalid spawn point, please make sure you're looking at a flat surface."
-		"pt"	"Ponto de surgimento inválido. Por favor, certifique-se de que sua mira está em cima de uma superfície plana."
+		"pt"	"Ponto de surgimento inválido. Por favor, certifique-se de que sua mira está sobre uma superfície plana."
 	}
 	
 	"spawned boss prefix message"
